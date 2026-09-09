@@ -118,11 +118,19 @@ interface LayoutRepository {
 Um **facade estável** (`shared/data/repository.ts`) expõe um único
 objeto `layoutRepository` cujos métodos sempre delegam para a
 implementação atualmente ativa; `activateRemoteRepository(userId)` e
-`activateLocalRepository()` trocam o backend por baixo. Quem chama
-(`activateRemoteRepository`/`activateLocalRepository`) é exclusivamente
-o `useAuthStore` (Fase 9), reagindo a login/logout — o restante do app
-sempre importa o mesmo `layoutRepository` e nunca sabe qual
-implementação está ativa. Isso garante que o núcleo do editor nunca
+`activateLocalRepository()` trocam o backend por baixo. O restante do
+app sempre importa o mesmo `layoutRepository` e nunca sabe qual
+implementação está ativa.
+
+> **Versão atual (Fase 10) — local, sem conta.** O backend ativo é
+> sempre o `LocalLayoutRepository`: nada no fluxo chama
+> `activateRemoteRepository`, e ela é no-op enquanto `VITE_API_BASE_URL`
+> não estiver definida (`isRemoteApiConfigured`, `shared/data/apiClient.ts`
+> — não existe fallback implícito para `localhost:8787`, justamente para
+> que uma chamada acidental não vire `Failed to fetch`/CORS em produção).
+> Retomar a versão multiusuário é reativar a chamada em
+> `useAuthStore.bootstrap/login` e definir a variável — o resto desta
+> seção segue valendo. Isso garante que o núcleo do editor nunca
 dependa diretamente do Worker, do D1, do IndexedDB ou de qualquer outro
 detalhe de infraestrutura.
 
@@ -137,7 +145,15 @@ estritamente aditiva: nunca sobrescreve um projeto remoto existente, e
 revisitar a tela não duplica um layout já importado. Os dados locais
 permanecem intactos no navegador após a migração (não são apagados).
 
-## 3. Autenticação e autorização (Fase 9)
+## 3. Autenticação e autorização (Fase 9 — fora do fluxo na Fase 10)
+
+> **Estado atual:** esta seção descreve o backend de contas, que
+> continua implementado e testado em `worker/`, mas **não faz parte do
+> fluxo de navegação**. O app entra direto em `/projects` e
+> `/editor/:layoutId` sem nenhum gate (`src/app/App.tsx`); `AuthGate`,
+> `useAuthStore` e as páginas em `src/features/auth/pages` permanecem no
+> repositório, sem uso, para a retomada da versão multiusuário. Nenhuma
+> rota leva o usuário a `/login`.
 
 - **Cadastro:** o usuário informa e-mail; o Worker gera uma senha
   temporária aleatória, cria a conta com `must_change_password = true`

@@ -1,6 +1,19 @@
 # FluxoCit — Fluxos de Usuário
 
-## 1. Cadastro e login (Fase 9)
+## 0. Entrada (versão atual — Fase 10, sem conta)
+
+1. Usuário abre o FluxoCit → cai direto em `/projects` (lista de
+   projetos deste dispositivo). Não há login, cadastro nem sessão.
+2. "Novo projeto" → nome, descrição e dimensões do ambiente → o projeto
+   é criado localmente e o editor abre em `/editor/:layoutId`.
+3. Edita Layout e Fluxo → autosave local → "Voltar" → o projeto continua
+   na lista, com os dados preservados entre recarregamentos do
+   navegador.
+4. Os projetos ficam no `localStorage` deste navegador/dispositivo: não
+   são compartilhados entre máquinas nem entre usuários (é o que a
+   seção 1 passa a resolver quando a versão multiusuário for retomada).
+
+## 1. Cadastro e login (Fase 9 — fora do fluxo na versão atual)
 
 1. Usuário acessa o FluxoCit sem sessão ativa → pode navegar como
    visitante (persistência local) ou ir para a tela de login.

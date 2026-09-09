@@ -20,6 +20,34 @@ beforeEach(() => {
 })
 
 describe('useEditorStore', () => {
+  it('desfazer devolve o objeto à posição anterior ao arraste (commitDragPositions)', () => {
+    const store = useEditorStore.getState()
+    store.addObject('pallet', 500, 500)
+    const obj = useEditorStore.getState().objects[0]!
+    const origin = { x: obj.x, y: obj.y }
+
+    // Sequência de um arraste, como em canvas/ObjectNode: movimentos ao vivo (sem histórico)
+    // seguidos do commit no dragend.
+    useEditorStore.getState().moveObjectLive(obj.id, origin.x + 300, origin.y + 200)
+    useEditorStore
+      .getState()
+      .commitDragPositions(
+        [{ id: obj.id, x: origin.x, y: origin.y }],
+        [{ id: obj.id, x: origin.x + 300, y: origin.y + 200 }],
+      )
+
+    const moved = useEditorStore.getState().objects[0]!
+    expect({ x: moved.x, y: moved.y }).toEqual({ x: origin.x + 300, y: origin.y + 200 })
+
+    useEditorStore.getState().undo()
+    const undone = useEditorStore.getState().objects[0]!
+    expect({ x: undone.x, y: undone.y }).toEqual(origin)
+
+    useEditorStore.getState().redo()
+    const redone = useEditorStore.getState().objects[0]!
+    expect({ x: redone.x, y: redone.y }).toEqual({ x: origin.x + 300, y: origin.y + 200 })
+  })
+
   it('adds an object snapped to the grid, centered on the insertion point', () => {
     useEditorStore.getState().addObject('pallet', 500, 500)
     const [obj] = useEditorStore.getState().objects

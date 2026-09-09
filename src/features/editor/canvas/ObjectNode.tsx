@@ -194,11 +194,16 @@ export function ObjectNode({
     onSnapGuideChange(null)
     if (!origin) return
     const store = useEditorStore.getState()
-    const updates = Array.from(origin.keys()).map((id) => {
+    const final = Array.from(origin.keys()).map((id) => {
       const o = store.objects.find((x) => x.id === id)
-      return { id, patch: { x: o?.x ?? 0, y: o?.y ?? 0 } }
+      return { id, x: o?.x ?? 0, y: o?.y ?? 0 }
     })
-    store.commitMany(updates)
+    // As posições de origem (capturadas no dragstart) são o que o undo precisa registrar — durante
+    // o gesto, moveManyLive já moveu os objetos sem histórico. Ver commitDragPositions.
+    store.commitDragPositions(
+      Array.from(origin.entries()).map(([id, pos]) => ({ id, x: pos.x, y: pos.y })),
+      final,
+    )
     originRef.current = null
     dragAnchorStartPxRef.current = null
   }

@@ -11,6 +11,15 @@ mesmo projeto e são persistidas juntas.
 
 > Nesta fase o produto é exclusivamente 2D. Ver `docs/PRODUCT.md`.
 
+> **Versão atual: local, sem conta.** O app abre direto em `/projects` —
+> sem login, cadastro ou sessão — e guarda os projetos neste dispositivo
+> (`localStorage`). Não depende de Cloudflare Worker, D1 nem de nenhuma
+> API: o frontend sozinho (ex.: publicado no Vercel) já é o produto
+> funcionando. O backend (`worker/`, `migrations/`) e o código de
+> autenticação (`src/features/auth`, `RemoteLayoutRepository`) continuam
+> no repositório, intactos, para a futura versão multiusuário — apenas
+> fora do fluxo. Ver `docs/ARCHITECTURE.md` § Persistência.
+
 ## Documentação
 
 | Documento | Conteúdo |
@@ -31,9 +40,11 @@ mesmo projeto e são persistidas juntas.
 React + TypeScript + Vite, Konva/react-konva (canvas 2D), Zustand
 (estado), Tailwind CSS no frontend; Cloudflare Workers + D1 + Hono no
 backend (conta real, e-mail/senha, projetos por usuário — ver
-`docs/TECH_STACK.md`). Um visitante sem sessão continua usando o editor
+`docs/TECH_STACK.md`), hoje **desligado do fluxo**. O app roda o editor
 inteiramente no navegador, com persistência local (`localStorage`)
-atrás da mesma interface de repositório.
+atrás da mesma interface de repositório (`LayoutRepository`) — trocar
+para o backend remoto é uma questão de reativar
+`activateRemoteRepository` e definir `VITE_API_BASE_URL`.
 
 ## Rodando localmente
 
@@ -145,10 +156,19 @@ npm run lint      # lint (oxlint)
       `docs/DEPLOYMENT.md` para os passos manuais de configuração da
       conta Cloudflare/Resend necessários antes de publicar em produção.
 
+- [x] Fase 10 — Versão local para uso imediato da equipe:
+      autenticação retirada do fluxo de navegação (entrada direta em
+      `/projects`, `/editor/:layoutId` sem gate, nenhuma rota leva a
+      `/login`), persistência local como backend ativo, frontend sem
+      dependência obrigatória de Worker/D1/API (`VITE_API_BASE_URL`
+      passa a ser opt-in explícito, sem fallback para `localhost:8787`)
+      e `vercel.json` com fallback SPA para publicar o frontend sozinho
+
 Fora do escopo até aqui (aguardando instrução): editor 3D, times/
-organizações compartilhadas, deploy automático (CI/CD). O deploy de
-teste do frontend é feito manualmente pelo responsável do produto; o
-Worker é publicado via `wrangler deploy` (`docs/DEPLOYMENT.md`).
+organizações compartilhadas, deploy automático (CI/CD). O frontend
+pode ser publicado no Vercel a partir do GitHub (`vercel.json`); o
+Worker, quando a versão multiusuário for retomada, é publicado via
+`wrangler deploy` (`docs/DEPLOYMENT.md`).
 
 ## Biblioteca de objetos
 

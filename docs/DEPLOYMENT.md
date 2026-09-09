@@ -1,4 +1,16 @@
-# FluxoCit — Deploy (Fase 9)
+# FluxoCit — Deploy
+
+> **Versão atual (Fase 10): o frontend é publicável sozinho.** Os
+> projetos ficam no dispositivo (`localStorage`), sem conta e sem
+> backend. Para publicar no Vercel a partir do GitHub basta o próprio
+> repositório: `vercel.json` já traz `buildCommand` (`npm run build`),
+> `outputDirectory` (`dist`) e o fallback SPA (toda rota serve
+> `index.html`, necessário para abrir/recarregar `/projects` e
+> `/editor/:layoutId` direto na URL). **Não** defina `VITE_API_BASE_URL`
+> — sem ela o frontend nunca chama API alguma. Nada abaixo é necessário
+> nesta versão.
+
+## Backend (Fase 9) — apenas para a futura versão multiusuário
 
 > Este documento lista os passos **manuais**, numa conta Cloudflare (e
 > numa conta Resend) reais, necessários para colocar o backend em

@@ -282,7 +282,7 @@ export function EditorPage() {
   return (
     <div className="h-dvh w-full flex flex-col bg-bg">
       <header className="flex items-center gap-2 px-3 py-2 border-b border-border bg-surface shrink-0">
-        <IconButton label="Voltar" onClick={() => navigate('/layouts')}>
+        <IconButton label="Voltar" onClick={() => navigate('/projects')}>
           <ArrowLeft size={20} />
         </IconButton>
         <h1 className="font-display text-sm md:text-base font-semibold text-text-primary truncate hidden sm:block sm:max-w-[30%]">
