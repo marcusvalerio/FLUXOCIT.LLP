@@ -185,8 +185,12 @@ export function FlowCanvas({ registerHandle }: FlowCanvasProps) {
     if (!pointer) return
     const isEmptyTarget = e.target === stage
     const isMiddleButton = e.evt.button === 1
+    const isRightButton = e.evt.button === 2
 
-    if (isMiddleButton || (isEmptyTarget && spaceDownRef.current)) {
+    // Mesma gramática de navegação da prancheta de Layout (ver canvas/EditorCanvas): botão
+    // direito, botão do meio ou espaço + arrastar deslocam a prancheta de qualquer ponto —
+    // inclusive sobre um nó, sem arrastá-lo junto.
+    if (isMiddleButton || isRightButton || (e.evt.button === 0 && spaceDownRef.current)) {
       panActiveRef.current = true
       panLastScreenRef.current = pointer
       setCursor('grabbing')
@@ -300,11 +304,14 @@ export function FlowCanvas({ registerHandle }: FlowCanvasProps) {
     const center = getCenter(p1, p2)
 
     if (lastPinchDistance.current !== null && lastPinchCenter.current !== null) {
+      const anchor = lastPinchCenter.current
       setCameraState((c) => {
         const scaleChange = distance / (lastPinchDistance.current ?? distance)
         const newZoom = clampZoom(c.zoom * scaleChange)
-        const worldX = (center.x - c.x) / c.zoom
-        const worldY = (center.y - c.y) / c.zoom
+        // Ponto de interesse ancorado no centro anterior dos dedos: o pinch dá zoom e o
+        // deslocamento do centro dá pan, no mesmo gesto (igual à prancheta de Layout).
+        const worldX = (anchor.x - c.x) / c.zoom
+        const worldY = (anchor.y - c.y) / c.zoom
         return { zoom: newZoom, x: center.x - worldX * newZoom, y: center.y - worldY * newZoom }
       })
     }
@@ -324,7 +331,8 @@ export function FlowCanvas({ registerHandle }: FlowCanvasProps) {
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-full bg-surface-alt overflow-hidden touch-none"
+      className="relative w-full h-full bg-canvas overflow-hidden touch-none"
+      onContextMenu={(e) => e.preventDefault()}
       style={{ cursor }}
     >
       {size.width > 0 && (
@@ -417,7 +425,7 @@ export function FlowCanvas({ registerHandle }: FlowCanvasProps) {
               cancelEditingNode()
             }
           }}
-          className="absolute rounded-md border-2 border-primary bg-white px-2 text-sm font-semibold text-text-primary shadow-md focus:outline-none"
+          className="absolute rounded-md border-2 border-primary bg-surface px-2 text-sm font-semibold text-text-primary shadow-md focus:outline-none"
           style={{
             left: camera.x + editingNode.x * camera.zoom + 14 * camera.zoom,
             top: camera.y + editingNode.y * camera.zoom,

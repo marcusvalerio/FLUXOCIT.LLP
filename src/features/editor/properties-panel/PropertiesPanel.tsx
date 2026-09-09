@@ -10,7 +10,8 @@ import {
   RotateCw,
   Trash2,
 } from 'lucide-react'
-import { OBJECT_CATALOG } from '../objects/catalog'
+import { OBJECT_CATALOG, getObjectDescription } from '../objects/catalog'
+import { ObjectThumbnail } from '../objects/ObjectThumbnail'
 import { useEditorStore } from '../state/useEditorStore'
 import { cmToM, mToCm } from '../../../shared/lib/units'
 import { NumberField } from '../../../shared/ui/NumberField'
@@ -78,7 +79,17 @@ export function PropertiesPanel({ object, hasOverlap, boundsStatus }: Properties
         </div>
       )}
       <div className="flex flex-wrap items-center justify-between gap-2 min-w-0">
-        <h2 className="font-heading text-base font-semibold text-text-primary truncate min-w-0">{def.label}</h2>
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="hidden h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-surface-alt/70 md:flex">
+            <ObjectThumbnail objectType={object.objectType} width={36} height={36} />
+          </span>
+          <span className="min-w-0">
+            <h2 className="font-heading text-base font-semibold text-text-primary truncate">{def.label}</h2>
+            <p className="truncate text-[11px] leading-tight text-text-secondary">
+              {getObjectDescription(object.objectType)}
+            </p>
+          </span>
+        </div>
         <div className="flex flex-wrap justify-end gap-1 shrink-0 max-w-full">
           <IconButton label="Girar -90°" onClick={() => rotateObject(object.id, -90)}>
             <RotateCcw size={18} />
@@ -96,7 +107,9 @@ export function PropertiesPanel({ object, hasOverlap, boundsStatus }: Properties
       </div>
 
       <div className="min-w-0">
-        <p className="text-xs font-medium text-text-secondary mb-2">Camadas</p>
+        <p className="mb-2 font-heading text-[11px] font-semibold uppercase tracking-wide text-text-disabled">
+          Camadas
+        </p>
         <div className="grid grid-cols-4 gap-1">
           <IconButton label="Trazer para frente" onClick={bringSelectedToFront}>
             <ChevronsUp size={18} />
@@ -114,6 +127,9 @@ export function PropertiesPanel({ object, hasOverlap, boundsStatus }: Properties
       </div>
 
       <div className="min-w-0 space-y-3">
+        <p className="font-heading text-[11px] font-semibold uppercase tracking-wide text-text-disabled">
+          Propriedades
+        </p>
         {def.propertyFields.map((field) => {
           if (field.kind === 'text') {
             const value = textDrafts[field.key] ?? ''
@@ -129,7 +145,7 @@ export function PropertiesPanel({ object, hasOverlap, boundsStatus }: Properties
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') e.currentTarget.blur()
                   }}
-                  className="w-full min-w-0 rounded border border-border bg-white px-2 py-1.5 text-right text-base md:text-sm text-black placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  className="w-full min-w-0 rounded-md border border-border bg-surface px-2 py-1.5 text-right text-base text-text-primary placeholder:text-text-disabled transition-[border-color,box-shadow] duration-150 focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/20 md:text-sm"
                 />
               </label>
             )
@@ -150,7 +166,7 @@ export function PropertiesPanel({ object, hasOverlap, boundsStatus }: Properties
             return (
               <label key={field.key} className="grid grid-cols-[minmax(0,1fr)_minmax(0,8rem)] items-center gap-2 text-sm min-w-0">
                 <span className="min-w-0 break-words text-text-secondary">{field.label}</span>
-                <select value={value} onChange={(e) => setProperty(object.id, field.key, e.target.value)} className="w-full min-w-0 rounded border border-border bg-white px-2 py-1.5 text-sm text-black focus:outline-none focus:ring-2 focus:ring-primary/40">
+                <select value={value} onChange={(e) => setProperty(object.id, field.key, e.target.value)} className="w-full min-w-0 rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-text-primary transition-[border-color,box-shadow] duration-150 focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/20">
                   {field.options?.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                 </select>
               </label>

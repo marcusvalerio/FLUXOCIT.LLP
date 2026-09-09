@@ -690,3 +690,58 @@ export const CATEGORY_LABELS: Record<string, string> = {
 export function getObjectTypesByCategory(category: string): ObjectTypeDefinition[] {
   return Object.values(OBJECT_CATALOG).filter((def) => def.category === category)
 }
+
+/**
+ * Subtítulo de uma linha da biblioteca — a função logística do objeto, não sua categoria: é o
+ * que diferencia "Empilhadeira · Movimentação de cargas" de "Esteira · Transporte contínuo" numa
+ * lista densa. Fica fora das definições do catálogo (que descrevem geometria e propriedades) e
+ * cai no rótulo da categoria para qualquer tipo ainda sem descrição própria.
+ */
+const OBJECT_DESCRIPTIONS: Partial<Record<ObjectTypeKey, string>> = {
+  wall: 'Fechamento e divisão',
+  door: 'Acesso e circulação',
+  dock: 'Carga e descarga',
+  column: 'Elemento estrutural',
+  gate: 'Portão de acesso',
+  stairs: 'Circulação vertical',
+  rack: 'Armazenagem paletizada',
+  shelf: 'Armazenagem leve',
+  'storage-block': 'Armazenagem em bloco',
+  corridor: 'Circulação interna',
+  'drive-in': 'Alta densidade',
+  'push-back': 'Alta densidade dinâmica',
+  'flow-rack': 'Abastecimento por gravidade',
+  cantilever: 'Cargas longas',
+  'area-picking': 'Separação de pedidos',
+  'area-staging': 'Consolidação de cargas',
+  pallet: 'Unitização de carga',
+  box: 'Unitização em caixa',
+  container: 'Contêiner de transporte',
+  'cage-pallet': 'Contentor gradeado',
+  forklift: 'Movimentação de cargas',
+  'pallet-jack': 'Movimentação de cargas',
+  'reach-truck': 'Movimentação em corredor estreito',
+  tug: 'Rebocador de comboios',
+  'order-picker': 'Separação em altura',
+  'platform-cart': 'Transporte manual',
+  conveyor: 'Transporte contínuo',
+  'sorting-bench': 'Área de trabalho',
+  'packing-table': 'Embalagem e expedição',
+  scale: 'Pesagem e conferência',
+  'label-printer': 'Etiquetagem',
+  'rf-scanner': 'Coleta de dados',
+  area: 'Área funcional genérica',
+  'area-inspection': 'Conferência de cargas',
+  'area-shipping': 'Expedição',
+  'area-receiving': 'Recebimento',
+  'flow-route': 'Rota de circulação',
+  'directional-arrow': 'Sentido de fluxo',
+  'traffic-lane': 'Faixa de tráfego',
+  intersection: 'Cruzamento de rotas',
+  'safety-zone': 'Zona de segurança',
+  'pedestrian-lane': 'Faixa de pedestres',
+}
+
+export function getObjectDescription(key: ObjectTypeKey): string {
+  return OBJECT_DESCRIPTIONS[key] ?? CATEGORY_LABELS[OBJECT_CATALOG[key].category] ?? ''
+}

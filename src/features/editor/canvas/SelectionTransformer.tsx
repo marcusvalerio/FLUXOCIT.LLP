@@ -86,12 +86,16 @@ export function SelectionTransformer({ nodesByIdRef, pxPerMeter }: SelectionTran
       enabledAnchors={resizable ? ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'top-center', 'bottom-center', 'middle-left', 'middle-right'] : []}
       rotationSnaps={ROTATION_SNAPS}
       rotationSnapTolerance={6}
-      anchorSize={16}
-      anchorCornerRadius={8}
+      /* Alças generosas o bastante para o toque (44px de área efetiva com a folga do Konva) e
+       * discretas o bastante para não esconder o desenho: contorno azul de 1.5px, alça branca
+       * com anel azul. */
+      anchorSize={14}
+      anchorCornerRadius={7}
       anchorStroke="#0796D7"
+      anchorStrokeWidth={2}
       anchorFill="#FFFFFF"
       borderStroke="#0796D7"
-      borderStrokeWidth={2}
+      borderStrokeWidth={1.5}
       keepRatio={false}
       boundBoxFunc={(oldBox, newBox) => {
         if (newBox.width < minPx || newBox.height < minPx) return oldBox

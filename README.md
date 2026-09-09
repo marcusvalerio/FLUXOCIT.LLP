@@ -164,6 +164,17 @@ npm run lint      # lint (oxlint)
       passa a ser opt-in explícito, sem fallback para `localhost:8787`)
       e `vercel.json` com fallback SPA para publicar o frontend sozinho
 
+- [x] Fase 11 — Redesign do editor (UX de produto): cabeçalho com
+      prancheta ativa ao centro e status de salvamento, biblioteca com
+      busca e linhas densas (ícone técnico + função), painel direito com
+      abas Propriedades/Ambiente/Métricas e estados vazios, controles
+      flutuantes da prancheta (zoom, ferramentas, escala) e minimapa,
+      réguas refinadas, navegação de prancheta explícita (botão direito,
+      espaço, ferramenta Pan, dois dedos no toque) separada da
+      movimentação de objetos, drag & drop da biblioteca para o ponto
+      solto, etiqueta de dimensões na seleção e camada de motion curta
+      com `prefers-reduced-motion` respeitado
+
 Fora do escopo até aqui (aguardando instrução): editor 3D, times/
 organizações compartilhadas, deploy automático (CI/CD). O frontend
 pode ser publicado no Vercel a partir do GitHub (`vercel.json`); o

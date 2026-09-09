@@ -159,9 +159,11 @@ Escala padrão do Tailwind (múltiplos de 4px): `1` (4px), `2` (8px), `3`
 
 ## 7. Estados e feedback
 
-- **Seleção no canvas:** contorno azul (`--color-primary`) de 2px +
-  handles de transformação nos cantos/lados + handle de rotação acima
-  do objeto.
+- **Seleção no canvas:** contorno azul (`--color-primary`) de 1,5px +
+  alças de transformação (14px, brancas com anel azul) nos cantos/lados
+  + alça de rotação acima do objeto + **etiqueta de dimensões**
+  (`largura × comprimento`) ancorada abaixo da seleção, que acompanha
+  arraste e redimensionamento.
 - **Hover (desktop):** leve realce (sombra ou contorno a 40% de
   opacidade) antes de clicar.
 - **Snap ativo:** linha-guia tracejada `--color-primary` cruzando o
@@ -170,6 +172,31 @@ Escala padrão do Tailwind (múltiplos de 4px): `1` (4px), `2` (8px), `3`
   spinner discreto em ações pontuais.
 - **Erro:** texto em `--color-danger` + ícone, nunca apenas cor (também
   para acessibilidade/daltonismo).
+- **Salvamento:** indicador permanente no cabeçalho (ponto/spinner/✓ +
+  texto) e confirmação curta no botão **Salvar** (o ícone vira ✓ por
+  ~1,6s). Nunca um toast que cobre a prancheta.
+- **Arrastar da biblioteca:** o item levanta (escala 1.02 + opacidade) e
+  a prancheta ganha uma moldura azul discreta enquanto é alvo de drop.
+
+## 7.1 Motion
+
+Princípio: **motion explica estado, não chama atenção.** Nada de bounce,
+nada acima de 400ms, e tudo em `transform`/`opacity` para não custar
+re-render do canvas.
+
+| Token | Valor | Uso |
+|-------|-------|-----|
+| `--duration-fast` | 130ms | hover, press, troca de ícone |
+| `--duration-base` | 180ms | seleção, entrada de elemento, fade de painel |
+| `--duration-panel` | 280ms | gaveta lateral, bottom sheet, troca de prancheta |
+| `--ease-standard` | `cubic-bezier(.4,0,.2,1)` | transições gerais |
+| `--ease-out-soft` | `cubic-bezier(.22,1,.36,1)` | entradas (drop-in, slide-in) |
+
+Classes utilitárias: `.animate-fade-in`, `.animate-panel-in`,
+`.animate-sheet-in`, `.animate-drop-in`, `.animate-slide-in-left`,
+`.animate-slide-in-right`, `.animate-pop-in`. Todas são desligadas em
+`prefers-reduced-motion: reduce`, junto com um teto global de 1ms nas
+transições.
 
 ## 8. Acessibilidade
 

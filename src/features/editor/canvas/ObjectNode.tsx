@@ -32,10 +32,14 @@ interface ObjectNodeProps {
   registerRef: (id: string, node: Konva.Group | null) => void
   onSnapGuideChange: (guides: SnapGuides | null) => void
   onDraggingChange: (dragging: boolean) => void
+  /** False enquanto a prancheta está em modo de deslocamento (ferramenta "Mover prancheta" ou
+   * espaço pressionado): o mesmo gesto não pode mover o objeto e a prancheta ao mesmo tempo. */
+  draggable?: boolean
 }
 
 export function ObjectNode({
   obj,
+  draggable = true,
   pxPerMeter,
   selected,
   hasOverlap,
@@ -222,7 +226,7 @@ export function ObjectNode({
       offsetX={widthPx / 2}
       offsetY={lengthPx / 2}
       rotation={obj.rotationDeg}
-      draggable
+      draggable={draggable}
       onDragStart={handleDragStart}
       onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}

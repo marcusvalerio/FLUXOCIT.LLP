@@ -5,10 +5,29 @@ import { computeOccupancyPercent, computeSpatialViolations } from '../../../shar
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between text-sm">
-      <span className="text-text-secondary">{label}</span>
-      <span className="text-text-primary font-medium">{value}</span>
+    <div className="flex items-center justify-between gap-3 text-sm">
+      <span className="min-w-0 truncate text-text-secondary">{label}</span>
+      <span className="shrink-0 font-medium tabular-nums text-text-primary">{value}</span>
     </div>
+  )
+}
+
+/** Indicador de destaque: número grande em Supreme, rótulo curto — leitura de relance. */
+function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-surface-alt/40 px-3 py-2.5">
+      <p className="font-heading text-[11px] font-semibold uppercase tracking-wide text-text-disabled">{label}</p>
+      <p className="mt-1 font-heading text-lg font-semibold leading-none tabular-nums text-text-primary">{value}</p>
+      {hint && <p className="mt-1 text-[11px] leading-tight text-text-secondary">{hint}</p>}
+    </div>
+  )
+}
+
+function SectionTitle({ children }: { children: string }) {
+  return (
+    <p className="mb-2 font-heading text-[11px] font-semibold uppercase tracking-wide text-text-disabled">
+      {children}
+    </p>
   )
 }
 
@@ -27,17 +46,26 @@ export function MetricsPanel() {
 
   return (
     <div className="space-y-4">
-      <h2 className="font-heading text-base font-semibold text-text-primary">Métricas</h2>
+      <div className="grid grid-cols-2 gap-2">
+        <Stat label="Área total" value={`${m.areaTotalM2.toFixed(1)} m²`} />
+        <Stat
+          label="Ocupação"
+          value={`${Math.min(999, occupancy).toFixed(0)}%`}
+          hint="Aprox., por soma de áreas"
+        />
+      </div>
 
-      <div className="space-y-2">
-        <Row label="Área total" value={`${m.areaTotalM2.toFixed(1)} m²`} />
-        <Row label="Área de armazenagem" value={`${m.areaArmazenagemM2.toFixed(1)} m²`} />
-        <Row label="Área operacional" value={`${m.areaOperacionalM2.toFixed(1)} m²`} />
-        <Row label="Área de circulação" value={`${m.areaCirculacaoM2.toFixed(1)} m²`} />
-        <Row label="Ocupação (aprox.)" value={`${Math.min(999, occupancy).toFixed(0)}%`} />
+      <div>
+        <SectionTitle>Áreas</SectionTitle>
+        <div className="space-y-2">
+          <Row label="Armazenagem" value={`${m.areaArmazenagemM2.toFixed(1)} m²`} />
+          <Row label="Operacional" value={`${m.areaOperacionalM2.toFixed(1)} m²`} />
+          <Row label="Circulação" value={`${m.areaCirculacaoM2.toFixed(1)} m²`} />
+        </div>
       </div>
 
       <div className="border-t border-border pt-3 space-y-2">
+        <SectionTitle>Contagens</SectionTitle>
         <Row label="Posições de pallet (racks)" value={String(m.posicoesPallet)} />
         <Row label="Equipamentos" value={String(m.qtdEquipamentos)} />
         <Row label="Docas" value={String(m.qtdDocas)} />
@@ -48,7 +76,9 @@ export function MetricsPanel() {
 
       <div className="border-t border-border pt-3 space-y-2">
         <div className="flex items-center justify-between">
-          <h3 className="font-heading text-sm font-semibold text-text-primary">Alertas</h3>
+          <h3 className="font-heading text-[11px] font-semibold uppercase tracking-wide text-text-disabled">
+            Alertas
+          </h3>
           {violations.length > 0 && (
             <span className="text-xs text-text-secondary">
               {criticalCount > 0 && `${criticalCount} conflito${criticalCount > 1 ? 's' : ''}`}

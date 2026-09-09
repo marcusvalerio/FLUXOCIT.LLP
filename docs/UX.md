@@ -17,22 +17,34 @@ irreversíveis fora do canvas (excluir layout inteiro).
 ### 2.1 Desktop (≥1024px)
 
 ```
-┌───────────────────────────────────────────────────────────┐
-│ Barra superior: nome do layout · status de salvamento · menu│
-├───────────┬───────────────────────────────────┬─────────────┤
-│ Biblioteca│                                     │ Propriedades │
-│ de objetos│           CANVAS 2D                 │ do objeto    │
-│ (painel   │        (zoom, pan, grid)             │ selecionado  │
-│ lateral   │                                     │ (painel      │
-│ esquerdo, │                                     │ lateral      │
-│ colapsável)│                                    │ direito)     │
-└───────────┴───────────────────────────────────┴─────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│ FluxoCit.LLP │ ← │ Projeto        [ Layout | Fluxo ]   ↶ ↷ Salvar ⋮│
+│                    status de salvamento                            │
+├────────────┬──────────────────────────────────┬──────────────────┤
+│ Biblioteca │  [+ − ⤢ ⌖]                        │ Propriedades │    │
+│ busca      │                                    │ Ambiente     │    │
+│ categorias │            PRANCHETA               │ Métricas     │    │
+│ linhas     │                                    │ (abas)       │    │
+│ (ícone     │  78% ▭1m  [⬉ ✋ ▦ 🧲 ⤳ ⤓]  [minimapa]│              │    │
+│  técnico)  │                                    │              │    │
+└────────────┴──────────────────────────────────┴──────────────────┘
 ```
 
-- Biblioteca e propriedades são painéis fixos, colapsáveis (ícone de
-  recolher), para maximizar área de canvas quando não precisos.
-- Barra de ações rápidas (duplicar, girar ±90°, excluir, undo/redo)
-  flutua sobre o canvas quando há seleção.
+- **Cabeçalho** em três blocos: identidade + projeto + status à
+  esquerda, prancheta ativa (Layout/Fluxo) ao centro, ações à direita
+  (desfazer/refazer, tema, **Salvar**, menu de ações secundárias).
+- **Biblioteca** (264px, ≥1024px): busca no topo, categorias em chips e
+  itens em **linhas densas** — ícone técnico (o mesmo símbolo que vai
+  para a prancheta), nome e função. Nunca cards grandes.
+- **Painel direito** (288–312px, ≥768px): abas Propriedades / Ambiente /
+  Métricas. Sem seleção, Propriedades mostra um estado vazio explicativo
+  em vez de uma coluna em branco.
+- **Controles flutuantes** sobre a prancheta: zoom no canto superior
+  esquerdo, ferramentas (selecionar, mover prancheta, grade, snap, fluxo
+  sobre o layout, exportar) na barra inferior central, leitura de zoom +
+  escala no canto inferior esquerdo e **minimapa** no inferior direito.
+- Entre 768px e 1023px a biblioteca vira gaveta lateral (botão
+  "Biblioteca" sobre a prancheta); o painel direito permanece fixo.
 
 ### 2.2 Mobile (<1024px)
 
@@ -122,12 +134,27 @@ irreversíveis fora do canvas (excluir layout inteiro).
 
 ### 3.7 Zoom e pan
 
-- **Desktop:** roda do mouse = zoom (centrado no cursor); arrastar com
-  botão do meio ou espaço+arrastar = pan; botões `+`/`-`/"ajustar à
-  tela" sempre visíveis como fallback.
-- **Mobile:** pinça de dois dedos = zoom (centrado no ponto médio dos
-  dedos); arrastar um dedo em área vazia = pan; botões `+`/`-`/"ajustar
-  à tela" sempre visíveis (não depender só de gesto).
+Regra que organiza tudo: **deslocar a prancheta nunca move um objeto, e
+mover um objeto nunca desloca a prancheta.** O que separa os dois é o
+gesto, não a sorte de onde o cursor estava.
+
+- **Desktop — pan:** quatro caminhos equivalentes, todos válidos mesmo
+  com o cursor sobre um objeto: **botão direito + arrastar**, botão do
+  meio + arrastar, **espaço + arrastar** e a ferramenta **"Mover
+  prancheta"** (mãozinha na barra inferior). Enquanto qualquer um deles
+  está ativo os objetos deixam de ser arrastáveis, então o gesto nunca
+  faz as duas coisas ao mesmo tempo. O cursor indica o modo (seta ↔ mão).
+- **Desktop — zoom:** roda do mouse (ancorado no cursor) e botões
+  `+`/`−`/"ajustar à tela"/"centralizar na seleção".
+- **Mobile:** pinça de dois dedos = zoom **e** pan no mesmo gesto (o
+  ponto do mundo sob o centro dos dedos fica ancorado); um dedo em área
+  vazia = pan; um dedo sobre um objeto = mover o objeto. Botões de zoom
+  sempre visíveis (não depender só de gesto).
+- **Minimapa** (≥768px): clicar/arrastar recentraliza a prancheta —
+  navegação, nunca edição.
+- Arrastar um item da biblioteca até a prancheta insere o objeto **no
+  ponto solto** (drag & drop nativo, desktop); no toque, tocar no item
+  insere no centro da viewport.
 - Limites de zoom: min. suficiente para ver o layout inteiro + margem;
   max. suficiente para posicionar objetos pequenos (pallet) com
   precisão de poucos centímetros.
@@ -138,6 +165,13 @@ irreversíveis fora do canvas (excluir layout inteiro).
   superior, sem afetar o snapping).
 - Toggle de snap-to-grid acessível (ícone de ímã na barra de ações);
   estado persistido por sessão do usuário (não por layout).
+
+### 3.9 Estado vazio da prancheta
+
+Projeto sem objetos mostra, no centro e discretamente, "Comece a montar
+seu layout" + como inserir (arrastar da biblioteca ou tocar). Some com
+um fade curto quando o primeiro objeto entra — nunca ocupa a prancheta
+inteira nem intercepta cliques.
 
 ## 4. Representação de objetos (diretrizes de desenho)
 
