@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
 import { Stage, Layer, Rect } from 'react-konva'
+import { Box } from 'lucide-react'
 import type Konva from 'konva'
 import { Environment } from './Environment'
 import { FlowOverlay } from './FlowOverlay'
 import { Grid } from './Grid'
 import { ObjectNode } from './ObjectNode'
 import { ObjectRenderStatic } from './ObjectRenderStatic'
+import { Minimap } from './Minimap'
 import { RULER_SIZE, Rulers } from './Rulers'
 import { GuideLines, type SnapGuides } from './GuideLines'
 import { SelectionTransformer } from './SelectionTransformer'
@@ -14,6 +16,8 @@ import { getBoundingBox } from '../../../shared/lib/geometry'
 import { computeSpatialViolations, findStorageOverlaps, getBoundsStatus } from '../../../shared/lib/spatialRules'
 import { cmToPx, pxToCm } from '../../../shared/lib/units'
 import { useIsDarkMode } from '../../../shared/lib/useIsDarkMode'
+import { OBJECT_CATALOG } from '../objects/catalog'
+import { LIBRARY_DND_MIME } from '../library-panel/dragAndDrop'
 import type { ObjectTypeKey } from '../../../types/layout'
 
 const MIN_ZOOM = 0.2
@@ -36,6 +40,9 @@ export interface EditorCanvasHandle {
   zoomIn: () => void
   zoomOut: () => void
   fitToView: () => void
+  /** Traz a seleção atual para o centro da viewport, mantendo o zoom (ou enquadra o ambiente
+   * inteiro quando nada está selecionado). */
+  centerOnSelection: () => void
   exportPng: () => void
 }
 
@@ -44,15 +51,22 @@ interface EditorCanvasProps {
   /** Fires whenever any object starts/stops being dragged — lets the mobile properties sheet
    * collapse out of the way for the duration of the gesture. See docs/UX.md § 2.2. */
   onDraggingChange?: (dragging: boolean) => void
+  /** Conteúdo sobreposto ao canvas (controles flutuantes) — fica aqui dentro para acompanhar
+   * exatamente a área da prancheta, sem duplicar o cálculo de tamanho. */
+  overlay?: ReactNode
+  /** Minimapa no canto inferior direito (desktop/tablet). */
+  showMinimap?: boolean
 }
 
-export function EditorCanvas({ registerHandle, onDraggingChange }: EditorCanvasProps) {
+export function EditorCanvas({ registerHandle, onDraggingChange, overlay, showMinimap = false }: EditorCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
   const [marqueeRect, setMarqueeRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
   const [guides, setGuides] = useState<SnapGuides | null>(null)
   const [isDraggingObject, setIsDraggingObject] = useState(false)
   const [cursor, setCursor] = useState<'default' | 'grab' | 'grabbing'>('default')
+  /** Realce da prancheta enquanto um item da biblioteca é arrastado sobre ela (drag & drop). */
+  const [dropActive, setDropActive] = useState(false)
   const [cursorWorldM, setCursorWorldM] = useState<{ x: number; y: number } | null>(null)
 
   const lastPinchDistance = useRef<number | null>(null)
@@ -73,6 +87,9 @@ export function EditorCanvas({ registerHandle, onDraggingChange }: EditorCanvasP
   const selectMany = useEditorStore((s) => s.selectMany)
   const camera = useEditorStore((s) => s.camera)
   const setCamera = useEditorStore((s) => s.setCamera)
+  const canvasTool = useEditorStore((s) => s.canvasTool)
+  const spacePanActive = useEditorStore((s) => s.spacePanActive)
+  const setSpacePanActive = useEditorStore((s) => s.setSpacePanActive)
   const scalePxPerMeter = useEditorStore((s) => s.scalePxPerMeter)
   const gridVisible = useEditorStore((s) => s.gridVisible)
   const flowOverlayVisible = useEditorStore((s) => s.flowOverlayVisible)
@@ -164,21 +181,37 @@ export function EditorCanvas({ registerHandle, onDraggingChange }: EditorCanvasP
       if (e.code === 'Space' && !isEditableTarget(e.target)) {
         if (!spaceDownRef.current) setCursor('grab')
         spaceDownRef.current = true
+        setSpacePanActive(true)
       }
     }
     function onKeyUp(e: KeyboardEvent) {
       if (e.code === 'Space') {
         spaceDownRef.current = false
+        setSpacePanActive(false)
         setCursor(mouseModeRef.current === 'pan' ? 'grabbing' : 'default')
       }
     }
+    function onBlur() {
+      // A janela perdeu o foco com espaço pressionado: sem isso o canvas ficaria "preso" em pan.
+      spaceDownRef.current = false
+      setSpacePanActive(false)
+    }
+    window.addEventListener('blur', onBlur)
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
     return () => {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('blur', onBlur)
     }
-  }, [])
+  }, [setSpacePanActive])
+
+  // A ferramenta ativa define o cursor de repouso: mãozinha para "mover prancheta", seta para
+  // "selecionar" — feedback imediato de qual gesto o arraste vai produzir.
+  useEffect(() => {
+    if (mouseModeRef.current === 'pan') return
+    setCursor(canvasTool === 'pan' ? 'grab' : 'default')
+  }, [canvasTool])
 
   function clampZoom(z: number) {
     return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z))
@@ -213,6 +246,31 @@ export function EditorCanvas({ registerHandle, onDraggingChange }: EditorCanvasP
       fitToView: () => {
         const fit = computeFitCamera()
         if (fit) setCamera(fit)
+      },
+      centerOnSelection: () => {
+        const selected = objects.filter((o) => selectedIds.includes(o.id))
+        if (selected.length === 0) {
+          const fit = computeFitCamera()
+          if (fit) setCamera(fit)
+          return
+        }
+        let minX = Infinity
+        let minY = Infinity
+        let maxX = -Infinity
+        let maxY = -Infinity
+        for (const obj of selected) {
+          const box = getBoundingBox(obj)
+          minX = Math.min(minX, box.minX)
+          minY = Math.min(minY, box.minY)
+          maxX = Math.max(maxX, box.maxX)
+          maxY = Math.max(maxY, box.maxY)
+        }
+        const centerXPx = cmToPx((minX + maxX) / 2, scalePxPerMeter)
+        const centerYPx = cmToPx((minY + maxY) / 2, scalePxPerMeter)
+        setCamera({
+          x: (size.width + RULER_SIZE) / 2 - centerXPx * camera.zoom,
+          y: (size.height + RULER_SIZE) / 2 - centerYPx * camera.zoom,
+        })
       },
       exportPng: () => {
         const stage = exportStageRef.current
@@ -256,7 +314,7 @@ export function EditorCanvas({ registerHandle, onDraggingChange }: EditorCanvasP
       },
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [registerHandle, size, camera, scalePxPerMeter, addObject, setCamera, envWidthPx, envHeightPx, layoutName])
+  }, [registerHandle, size, camera, scalePxPerMeter, addObject, setCamera, envWidthPx, envHeightPx, layoutName, objects, selectedIds])
 
   const lastFittedLayoutId = useRef<string | null>(null)
   const storeLayoutId = useEditorStore((s) => s.layoutId)
@@ -297,12 +355,24 @@ export function EditorCanvas({ registerHandle, onDraggingChange }: EditorCanvasP
     if (!pointer) return
     const isEmptyTarget = e.target === stage
     const isMiddleButton = e.evt.button === 1
+    const isRightButton = e.evt.button === 2
 
-    if (isMiddleButton || (isEmptyTarget && spaceDownRef.current)) {
+    // Deslocar a prancheta (pan) — quatro caminhos equivalentes, e todos funcionam mesmo com o
+    // cursor sobre um objeto, exceto o arraste comum com o botão esquerdo (esse continua sendo
+    // "mover o objeto"). É essa separação que garante: PAN nunca move objeto, mover objeto nunca
+    // move a prancheta. Ver docs/UX.md § Navegação da prancheta.
+    //   · botão direito + arrastar   · botão do meio + arrastar
+    //   · espaço + arrastar          · ferramenta "Mover prancheta" ativa
+    const panWithLeftButton = e.evt.button === 0 && (spaceDownRef.current || canvasTool === 'pan')
+    if (isMiddleButton || isRightButton || panWithLeftButton) {
       mouseModeRef.current = 'pan'
       panLastScreenRef.current = pointer
       setCursor('grabbing')
       e.evt.preventDefault()
+      // Um pan iniciado sobre um objeto não pode deixar o Konva começar a arrastá-lo junto.
+      nodesById.current.forEach((node) => {
+        if (node.isDragging()) node.stopDrag()
+      })
       return
     }
 
@@ -371,7 +441,7 @@ export function EditorCanvas({ registerHandle, onDraggingChange }: EditorCanvasP
     if (mouseModeRef.current === 'marquee') finishMarquee()
     mouseModeRef.current = 'none'
     panLastScreenRef.current = null
-    setCursor(spaceDownRef.current ? 'grab' : 'default')
+    setCursor(spaceDownRef.current || canvasTool === 'pan' ? 'grab' : 'default')
   }
 
   function handleTouchStart(e: Konva.KonvaEventObject<TouchEvent>) {
@@ -420,8 +490,11 @@ export function EditorCanvas({ registerHandle, onDraggingChange }: EditorCanvasP
       const scaleChange = distance / lastPinchDistance.current
       const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, oldZoom * scaleChange))
 
-      const worldX = (center.x - camera.x) / oldZoom
-      const worldY = (center.y - camera.y) / oldZoom
+      // O ponto do mundo sob o centro dos dois dedos é o ponto de interesse: ele fica ancorado
+      // durante o pinch (zoom) e acompanha o deslocamento do centro (pan com dois dedos) — os
+      // dois gestos convivem no mesmo movimento, como em qualquer app de mapa/prancheta.
+      const worldX = (lastPinchCenter.current.x - camera.x) / oldZoom
+      const worldY = (lastPinchCenter.current.y - camera.y) / oldZoom
 
       setCamera({
         zoom: newZoom,
@@ -448,11 +521,60 @@ export function EditorCanvas({ registerHandle, onDraggingChange }: EditorCanvasP
     }
   }
 
+  const selectionBadge = (() => {
+    if (selectedIds.length !== 1) return null
+    const obj = objects.find((o) => o.id === selectedIds[0])
+    if (!obj) return null
+    const box = getBoundingBox(obj)
+    const x = camera.x + cmToPx((box.minX + box.maxX) / 2, scalePxPerMeter) * camera.zoom
+    const y = camera.y + cmToPx(box.maxY, scalePxPerMeter) * camera.zoom + 12
+    if (x < RULER_SIZE || x > size.width || y < RULER_SIZE || y > size.height - 8) return null
+    return {
+      x,
+      y,
+      label: `${(obj.width / 100).toFixed(2).replace(/\.?0+$/, '')} × ${(obj.length / 100).toFixed(2).replace(/\.?0+$/, '')} m`,
+    }
+  })()
+
+  /** Converte um ponto da tela (evento DOM) em coordenadas de mundo (cm) — usado pelo drop da
+   * biblioteca, que chega como evento HTML, fora do Konva. */
+  function screenToWorldCm(clientX: number, clientY: number) {
+    const rect = containerRef.current?.getBoundingClientRect()
+    if (!rect) return null
+    const worldXPx = (clientX - rect.left - camera.x) / camera.zoom
+    const worldYPx = (clientY - rect.top - camera.y) / camera.zoom
+    return { xCm: pxToCm(worldXPx, scalePxPerMeter), yCm: pxToCm(worldYPx, scalePxPerMeter) }
+  }
+
+  function handleDomDragOver(e: ReactDragEvent<HTMLDivElement>) {
+    if (!e.dataTransfer.types.includes(LIBRARY_DND_MIME)) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+    if (!dropActive) setDropActive(true)
+  }
+
+  function handleDomDrop(e: ReactDragEvent<HTMLDivElement>) {
+    const objectType = e.dataTransfer.getData(LIBRARY_DND_MIME) as ObjectTypeKey
+    setDropActive(false)
+    if (!objectType || !(objectType in OBJECT_CATALOG)) return
+    e.preventDefault()
+    const point = screenToWorldCm(e.clientX, e.clientY)
+    if (!point) return
+    addObject(objectType, point.xCm, point.yCm)
+  }
+
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-full bg-surface-alt overflow-hidden touch-none"
+      className="relative w-full h-full bg-canvas overflow-hidden touch-none"
       style={{ cursor }}
+      onContextMenu={(e) => e.preventDefault()}
+      onDragOver={handleDomDragOver}
+      onDragLeave={(e) => {
+        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+        setDropActive(false)
+      }}
+      onDrop={handleDomDrop}
     >
       {size.width > 0 && (
         <Stage
@@ -514,6 +636,7 @@ export function EditorCanvas({ registerHandle, onDraggingChange }: EditorCanvasP
                     else nodesById.current.delete(id)
                   }}
                   onSnapGuideChange={setGuides}
+                  draggable={canvasTool === 'select' && !spacePanActive}
                   onDraggingChange={(dragging) => {
                     setIsDraggingObject(dragging)
                     onDraggingChange?.(dragging)
@@ -556,8 +679,52 @@ export function EditorCanvas({ registerHandle, onDraggingChange }: EditorCanvasP
           containerHeight={size.height}
         />
       )}
+      {/* Estado vazio: discreto, no centro da prancheta, e sai de cena suavemente assim que o
+          primeiro objeto entra (fica montado só para a transição de opacidade acontecer). */}
+      <div
+        aria-hidden={objects.length > 0}
+        className={`absolute inset-0 flex items-center justify-center pointer-events-none transition-opacity duration-300 ease-out ${
+          objects.length === 0 ? 'opacity-100' : 'opacity-0'
+        }`}
+      >
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border-strong/70 bg-surface/60 px-8 py-7 text-center backdrop-blur-[1px]">
+          <Box size={28} className="text-text-disabled" strokeWidth={1.5} />
+          <p className="font-heading text-sm font-semibold text-text-primary">Comece a montar seu layout</p>
+          <p className="max-w-[15rem] text-xs leading-relaxed text-text-secondary">
+            Arraste equipamentos da barra lateral ou toque para adicionar
+          </p>
+        </div>
+      </div>
+
+      {/* Prancheta como alvo de drop: moldura azul discreta enquanto um item é arrastado. */}
+      <div
+        aria-hidden="true"
+        className={`absolute inset-0 pointer-events-none rounded-none ring-2 ring-inset transition-opacity duration-150 ${
+          dropActive ? 'ring-primary/60 opacity-100' : 'ring-transparent opacity-0'
+        }`}
+      />
+
+      {/* Dimensões da seleção, ancoradas abaixo do objeto: a resposta de "que tamanho ficou?"
+          durante arraste e redimensionamento, sem precisar olhar o painel lateral. */}
+      {selectionBadge && (
+        <div
+          className="pointer-events-none absolute z-10 -translate-x-1/2 rounded-md border border-border bg-surface/95 px-2 py-1 text-[11px] font-medium leading-none tabular-nums text-text-secondary shadow-sm"
+          style={{ left: selectionBadge.x, top: selectionBadge.y }}
+        >
+          {selectionBadge.label}
+        </div>
+      )}
+
+      {overlay}
+
+      {showMinimap && size.width > 0 && (
+        <div className="absolute bottom-3 right-3 hidden md:block animate-fade-in">
+          <Minimap viewportWidth={size.width} viewportHeight={size.height} />
+        </div>
+      )}
+
       {cursorWorldM && (
-        <div className="hidden md:block absolute bottom-3 left-1/2 -translate-x-1/2 bg-surface/95 border border-border rounded-md shadow-sm px-3 py-1.5 text-xs text-text-secondary font-medium pointer-events-none">
+        <div className="hidden md:block absolute bottom-3 left-1/2 -translate-x-1/2 bg-surface/95 border border-border rounded-md shadow-sm px-3 py-1.5 text-xs text-text-secondary font-medium pointer-events-none tabular-nums">
           X: {cursorWorldM.x.toFixed(2)} m &nbsp;·&nbsp; Y: {cursorWorldM.y.toFixed(2)} m
         </div>
       )}

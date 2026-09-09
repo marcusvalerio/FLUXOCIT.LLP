@@ -26,11 +26,24 @@
   --color-warning: #d97706;
   --color-danger: #dc2626;
 
-  --font-sans: "Sora", system-ui, sans-serif;
   --font-display: "Familjen Grotesk", system-ui, sans-serif;
   --font-heading: "Supreme", system-ui, sans-serif;
 
+  /* Superfícies do editor: a prancheta é mais funda que os painéis, para dar profundidade sem
+   * sombras pesadas — "neutro por padrão" (docs/DESIGN_SYSTEM.md). */
+  --color-canvas: #e7e4de;
+  --color-surface-raised: #fbfaf8;
+  --color-border-strong: #c4bfb3;
+
+  --font-sans: "Sora", system-ui, sans-serif;
+
+  /* Motion: curto para interações comuns, um pouco mais longo para painéis/estados maiores.
+   * "Motion explica estado, não chama atenção" — nada acima de 400ms. */
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-fast: 130ms;
+  --duration-base: 180ms;
+  --duration-panel: 280ms;
 }
 
 :root {
@@ -53,6 +66,9 @@
   --color-success: #22c55e;
   --color-warning: #f59e0b;
   --color-danger: #f87171;
+  --color-canvas: #0b0b11;
+  --color-surface-raised: #1b1d24;
+  --color-border-strong: #3b3f4a;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -72,6 +88,9 @@
     --color-success: #22c55e;
     --color-warning: #f59e0b;
     --color-danger: #f87171;
+    --color-canvas: #0b0b11;
+    --color-surface-raised: #1b1d24;
+    --color-border-strong: #3b3f4a;
   }
 }
 
@@ -134,10 +153,128 @@ body {
   animation: fluxocit-sheet-in 220ms var(--ease-standard) both;
 }
 
+/* Objeto/elemento que entra na cena (drop no canvas, card que aparece): pequeno scale-in —
+ * o suficiente para o olho registrar "surgiu aqui", nunca um efeito de destaque. */
+@keyframes fluxocit-drop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Painel lateral entrando pela borda (biblioteca/propriedades em tablet). */
+@keyframes fluxocit-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes fluxocit-slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Confirmação de salvamento: o rótulo aparece e assenta, sem pulsar. */
+@keyframes fluxocit-pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-fade-in {
+  animation: fluxocit-fade-in var(--duration-base) var(--ease-standard) both;
+}
+
+.animate-drop-in {
+  animation: fluxocit-drop-in var(--duration-base) var(--ease-out-soft) both;
+}
+
+.animate-slide-in-right {
+  animation: fluxocit-slide-in-right var(--duration-panel) var(--ease-out-soft) both;
+}
+
+.animate-slide-in-left {
+  animation: fluxocit-slide-in-left var(--duration-panel) var(--ease-out-soft) both;
+}
+
+.animate-pop-in {
+  animation: fluxocit-pop-in var(--duration-base) var(--ease-out-soft) both;
+}
+
+/* Foco visível consistente em toda a interface — nunca removido para efeito visual
+ * (docs/UX.md § Acessibilidade). */
+:where(button, [role="button"], a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Barras de rolagem discretas nos painéis do editor (biblioteca, propriedades). */
+.scrollbar-slim {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+
+.scrollbar-slim::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scrollbar-slim::-webkit-scrollbar-thumb {
+  background-color: var(--color-border-strong);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.scrollbar-slim::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Item da biblioteca sendo arrastado para a prancheta: levanta levemente. */
+.library-item-dragging {
+  opacity: 0.55;
+  transform: scale(1.02);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in,
   .animate-panel-in,
-  .animate-sheet-in {
+  .animate-sheet-in,
+  .animate-drop-in,
+  .animate-slide-in-right,
+  .animate-slide-in-left,
+  .animate-pop-in {
     animation: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    transition-duration: 1ms !important;
   }
 }

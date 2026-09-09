@@ -1,30 +1,37 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft,
+  BarChart3,
   Check,
   Copy,
   Download,
   Grid3x3,
+  Layers,
+  Loader2,
   Magnet,
+  Maximize,
   Minus,
+  MoreVertical,
   MousePointerClick,
   Plus,
   Redo2,
   RotateCcw,
   RotateCw,
+  Save,
   Trash2,
+  TriangleAlert,
   Undo2,
-  Maximize,
   Warehouse,
   Workflow,
-  BarChart3,
 } from 'lucide-react'
 import { EditorCanvas, type EditorCanvasHandle } from './canvas/EditorCanvas'
+import { CanvasControls } from './canvas/CanvasControls'
 import { EnvironmentPanel } from './environment-panel/EnvironmentPanel'
 import { MetricsPanel } from './metrics-panel/MetricsPanel'
 import { LibraryPanel } from './library-panel/LibraryPanel'
 import { PropertiesPanel } from './properties-panel/PropertiesPanel'
+import { PropertiesEmptyState } from './properties-panel/PropertiesEmptyState'
 import { SelectionToolbar } from './properties-panel/SelectionToolbar'
 import { FlowCanvas, type FlowCanvasHandle } from './flow/FlowCanvas'
 import { FlowLibraryPanel } from './flow/FlowLibraryPanel'
@@ -32,13 +39,62 @@ import { FlowPropertiesPanel } from './flow/FlowPropertiesPanel'
 import { useEditorStore } from './state/useEditorStore'
 import { layoutRepository } from '../../shared/data/repository'
 import { findStorageOverlaps, getBoundsStatus } from '../../shared/lib/spatialRules'
+import { Button } from '../../shared/ui/Button'
 import { IconButton } from '../../shared/ui/IconButton'
+import { SegmentedControl } from '../../shared/ui/SegmentedControl'
 import { ThemeToggle } from '../../shared/ui/ThemeToggle'
 import { BottomSheet } from '../../shared/ui/BottomSheet'
 import type { ObjectTypeKey } from '../../types/layout'
 import type { FlowNodeType } from '../../types/flow'
 
 type Board = 'layout' | 'flow'
+type SidePanelTab = 'properties' | 'environment' | 'metrics'
+
+const BOARD_OPTIONS: { value: Board; label: string }[] = [
+  { value: 'layout', label: 'Layout' },
+  { value: 'flow', label: 'Fluxo' },
+]
+
+const SIDE_PANEL_OPTIONS: { value: SidePanelTab; label: string }[] = [
+  { value: 'properties', label: 'Propriedades' },
+  { value: 'environment', label: 'Ambiente' },
+  { value: 'metrics', label: 'Métricas' },
+]
+
+/** Rótulo e cor do indicador de salvamento no cabeçalho — estado, não decoração. */
+const SAVE_LABEL: Record<'idle' | 'saving' | 'saved' | 'error', string> = {
+  idle: 'Rascunho local',
+  saving: 'Salvando…',
+  saved: 'Salvo agora',
+  error: 'Não foi possível salvar',
+}
+
+function SaveIndicator({ status }: { status: 'idle' | 'saving' | 'saved' | 'error' }) {
+  return (
+    <span
+      className={`hidden max-w-full min-w-0 items-center gap-1.5 overflow-hidden text-[11px] leading-none transition-colors duration-150 sm:inline-flex ${
+        status === 'error' ? 'text-danger' : 'text-text-secondary'
+      }`}
+      aria-live="polite"
+    >
+      {status === 'saving' && <Loader2 size={12} className="animate-spin" />}
+      {status === 'saved' && <Check size={12} className="text-success" />}
+      {status === 'error' && <TriangleAlert size={12} />}
+      {status === 'idle' && <span className="h-1.5 w-1.5 rounded-full bg-text-disabled" />}
+      <span className="truncate">{SAVE_LABEL[status]}</span>
+    </span>
+  )
+}
+
+/** Título de bloco dos painéis laterais — mesma tipografia em biblioteca e propriedades. */
+function PanelHeader({ title, children }: { title: string; children?: ReactNode }) {
+  return (
+    <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border px-3">
+      <h2 className="font-heading text-[13px] font-semibold text-text-primary">{title}</h2>
+      {children}
+    </div>
+  )
+}
 
 export function EditorPage() {
   const { layoutId } = useParams<{ layoutId: string }>()
@@ -49,6 +105,9 @@ export function EditorPage() {
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [environmentOpen, setEnvironmentOpen] = useState(false)
   const [metricsOpen, setMetricsOpen] = useState(false)
+  const [sidePanelTab, setSidePanelTab] = useState<SidePanelTab>('properties')
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [justSaved, setJustSaved] = useState(false)
   const [loading, setLoading] = useState(true)
   // Mobile properties sheet: starts collapsed on every new selection (so it never sits on top
   // of a just-inserted/selected object, which appears at the viewport center) and is forced
@@ -64,6 +123,8 @@ export function EditorPage() {
   // history — using history length as the autosave trigger instead means we only persist committed
   // changes, not every in-progress drag frame (BR-41: autosave on relevant changes, not live tracking).
   const historyVersion = useEditorStore((s) => s.history.past.length)
+  const canUndo = useEditorStore((s) => s.history.past.length > 0)
+  const canRedo = useEditorStore((s) => s.history.future.length > 0)
   const selectedIds = useEditorStore((s) => s.selectedIds)
   const selectObject = useEditorStore((s) => s.selectObject)
   const loadLayout = useEditorStore((s) => s.loadLayout)
@@ -123,6 +184,12 @@ export function EditorPage() {
   useEffect(() => {
     setPropertiesCollapsed(true)
   }, [selectedIdsKey])
+
+  // Selecionar algo na prancheta traz o painel lateral de volta para Propriedades — sem isso a
+  // seleção parecia "não fazer nada" quando o usuário estava vendo Métricas.
+  useEffect(() => {
+    if (selectedIds.length > 0) setSidePanelTab('properties')
+  }, [selectedIdsKey, selectedIds.length])
 
   // A drag starting while the sheet happens to be expanded (the user opened it, then decided
   // to drag the object) latches it collapsed — so it doesn't pop back open the instant the
@@ -210,10 +277,33 @@ export function EditorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flowNodes, flowConnections, layoutId2, loading, saveRetryTick])
 
+  /** Salvamento explícito: o autosave já cobre o trabalho, mas o botão dá a confirmação que o
+   * usuário procura antes de fechar o projeto — e um retry imediato quando algo falhou. */
+  async function handleManualSave() {
+    if (!layoutId2) return
+    setSaveStatus('saving')
+    try {
+      const state = useEditorStore.getState()
+      await layoutRepository.saveLayoutObjects(layoutId2, state.objects)
+      await layoutRepository.saveFlowBoard(layoutId2, state.flowNodes, state.flowConnections)
+      setSaveStatus('saved')
+      setJustSaved(true)
+      window.setTimeout(() => setJustSaved(false), 1600)
+    } catch {
+      setSaveStatus('error')
+    }
+  }
+
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       const target = e.target as HTMLElement
       if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') return
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        handleManualSave()
+        return
+      }
 
       if (board === 'flow') {
         if ((e.key === 'Delete' || e.key === 'Backspace') && selectedFlowNodeId) {
@@ -250,6 +340,7 @@ export function EditorPage() {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     board,
     undo,
@@ -265,263 +356,465 @@ export function EditorPage() {
     duplicateFlowNode,
     selectFlowNode,
     selectFlowConnection,
+    layoutId2,
   ])
+
+  // Menu de ações secundárias: fecha ao clicar fora ou com Escape.
+  useEffect(() => {
+    if (!menuOpen) return
+    function onPointerDown(e: MouseEvent) {
+      const target = e.target as HTMLElement
+      if (!target.closest('[data-editor-menu]')) setMenuOpen(false)
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setMenuOpen(false)
+    }
+    window.addEventListener('mousedown', onPointerDown)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('mousedown', onPointerDown)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [menuOpen])
 
   function handleInsert(objectType: ObjectTypeKey) {
     canvasHandleRef.current?.insertAtCenter(objectType)
     setLibraryOpen(false)
   }
 
-  const saveStatusLabel: Record<typeof saveStatus, string> = {
-    idle: '',
-    saving: 'Salvando…',
-    saved: 'Salvo',
-    error: 'Erro ao salvar',
-  }
+  const menuItemClass =
+    'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-text-primary transition-colors duration-150 hover:bg-surface-alt'
 
   return (
-    <div className="h-dvh w-full flex flex-col bg-bg">
-      <header className="flex items-center gap-2 px-3 py-2 border-b border-border bg-surface shrink-0">
-        <IconButton label="Voltar" onClick={() => navigate('/projects')}>
-          <ArrowLeft size={20} />
-        </IconButton>
-        <h1 className="font-display text-sm md:text-base font-semibold text-text-primary truncate hidden sm:block sm:max-w-[30%]">
-          {layoutName || 'Layout'}
-        </h1>
-        <div className="flex items-center gap-0.5 bg-surface-alt rounded-md p-0.5 mx-auto sm:mx-0">
-          <button
-            onClick={() => setBoard('layout')}
-            className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-              board === 'layout' ? 'bg-surface text-text-primary shadow-sm' : 'text-text-secondary'
-            }`}
-          >
-            Layout
-          </button>
-          <button
-            onClick={() => setBoard('flow')}
-            className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-              board === 'flow' ? 'bg-surface text-text-primary shadow-sm' : 'text-text-secondary'
-            }`}
-          >
-            Fluxo
-          </button>
+    <div className="flex h-dvh w-full flex-col bg-bg">
+      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-surface px-2 sm:px-3">
+        {/* Identidade + projeto */}
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2.5">
+          <span className="hidden shrink-0 select-none font-display text-[15px] font-semibold tracking-tight text-text-primary lg:inline">
+            FluxoCit<span className="text-primary">.LLP</span>
+          </span>
+          <span aria-hidden="true" className="hidden h-5 w-px bg-border lg:block" />
+          <IconButton label="Voltar aos projetos" size="sm" tooltip tooltipSide="bottom" onClick={() => navigate('/projects')}>
+            <ArrowLeft size={18} />
+          </IconButton>
+          <div className="min-w-0">
+            <h1 className="truncate font-heading text-sm font-semibold leading-tight text-text-primary">
+              {layoutName || 'Projeto'}
+            </h1>
+            <SaveIndicator status={saveStatus} />
+          </div>
         </div>
-        <span
-          className={`text-xs shrink-0 transition-colors duration-200 hidden sm:inline ${saveStatus === 'error' ? 'text-danger' : 'text-text-secondary'}`}
-        >
-          {saveStatusLabel[saveStatus]}
-        </span>
-        <ThemeToggle />
+
+        {/* Prancheta ativa */}
+        <SegmentedControl
+          ariaLabel="Prancheta"
+          options={BOARD_OPTIONS}
+          value={board}
+          onChange={(next) => setBoard(next)}
+          className="shrink-0"
+        />
+
+        {/* Ações */}
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-1 sm:gap-1.5">
+          {board === 'layout' && (
+            <div className="hidden items-center gap-0.5 sm:flex">
+              <IconButton label="Desfazer" size="sm" tooltip tooltipSide="bottom" disabled={!canUndo} onClick={undo}>
+                <Undo2 size={18} />
+              </IconButton>
+              <IconButton label="Refazer" size="sm" tooltip tooltipSide="bottom" disabled={!canRedo} onClick={redo}>
+                <Redo2 size={18} />
+              </IconButton>
+              <span aria-hidden="true" className="mx-1 h-5 w-px bg-border" />
+            </div>
+          )}
+          <ThemeToggle />
+          <Button variant="primary" size="sm" onClick={handleManualSave} className="shrink-0">
+            {justSaved ? <Check size={16} className="animate-pop-in" /> : <Save size={16} />}
+            <span className="hidden sm:inline">{justSaved ? 'Salvo' : 'Salvar'}</span>
+          </Button>
+
+          <div className="relative shrink-0" data-editor-menu>
+            <IconButton
+              label="Mais ações"
+              size="sm"
+              active={menuOpen}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen((v) => !v)}
+            >
+              <MoreVertical size={18} />
+            </IconButton>
+            {menuOpen && (
+              <div
+                role="menu"
+                className="absolute right-0 top-full z-40 mt-1.5 w-60 origin-top-right rounded-xl border border-border bg-surface p-1.5 shadow-lg animate-panel-in"
+              >
+                <button
+                  role="menuitem"
+                  className={menuItemClass}
+                  onClick={() => {
+                    setMenuOpen(false)
+                    if (board === 'layout') canvasHandleRef.current?.fitToView()
+                    else flowCanvasHandleRef.current?.fitToView()
+                  }}
+                >
+                  <Maximize size={16} className="text-text-secondary" />
+                  Ajustar à tela
+                </button>
+                {board === 'layout' && (
+                  <>
+                    <button
+                      role="menuitem"
+                      className={menuItemClass}
+                      onClick={() => {
+                        setMenuOpen(false)
+                        canvasHandleRef.current?.exportPng()
+                      }}
+                    >
+                      <Download size={16} className="text-text-secondary" />
+                      Exportar como imagem (PNG)
+                    </button>
+                    <div aria-hidden="true" className="my-1.5 h-px bg-border" />
+                    <button
+                      role="menuitem"
+                      className={`${menuItemClass} md:hidden`}
+                      onClick={() => {
+                        setMenuOpen(false)
+                        setEnvironmentOpen(true)
+                      }}
+                    >
+                      <Warehouse size={16} className="text-text-secondary" />
+                      Ambiente
+                    </button>
+                    <button
+                      role="menuitem"
+                      className={`${menuItemClass} md:hidden`}
+                      onClick={() => {
+                        setMenuOpen(false)
+                        setMetricsOpen(true)
+                      }}
+                    >
+                      <BarChart3 size={16} className="text-text-secondary" />
+                      Métricas do projeto
+                    </button>
+                    <div aria-hidden="true" className="my-1.5 h-px bg-border md:hidden" />
+                    <button
+                      role="menuitem"
+                      aria-pressed={gridVisible}
+                      className={menuItemClass}
+                      onClick={toggleGrid}
+                    >
+                      <Grid3x3 size={16} className={gridVisible ? 'text-primary' : 'text-text-secondary'} />
+                      Grade
+                      <span className="ml-auto text-[11px] text-text-disabled">{gridVisible ? 'Ativa' : 'Oculta'}</span>
+                    </button>
+                    <button
+                      role="menuitem"
+                      aria-pressed={snapEnabled}
+                      className={menuItemClass}
+                      onClick={() => setSnapEnabled(!snapEnabled)}
+                    >
+                      <Magnet size={16} className={snapEnabled ? 'text-primary' : 'text-text-secondary'} />
+                      Snap
+                      <span className="ml-auto text-[11px] text-text-disabled">{snapEnabled ? 'Ativo' : 'Inativo'}</span>
+                    </button>
+                    <button
+                      role="menuitem"
+                      aria-pressed={flowOverlayVisible}
+                      className={menuItemClass}
+                      onClick={toggleFlowOverlay}
+                    >
+                      <Workflow size={16} className={flowOverlayVisible ? 'text-primary' : 'text-text-secondary'} />
+                      Fluxo sobre o layout
+                      <span className="ml-auto text-[11px] text-text-disabled">
+                        {flowOverlayVisible ? 'Visível' : 'Oculto'}
+                      </span>
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       </header>
 
-      {board === 'layout' && (
-      <div className="flex-1 flex overflow-hidden relative">
-        <aside className="hidden md:block w-64 border-r border-border bg-surface overflow-y-auto p-3">
-          <LibraryPanel onInsert={handleInsert} />
+      <div className="flex min-h-0 flex-1">
+        {/* Biblioteca — barra lateral no desktop, gaveta no tablet/mobile */}
+        <aside className="hidden w-[264px] shrink-0 flex-col border-r border-border bg-surface lg:flex">
+          <PanelHeader title={board === 'layout' ? 'Biblioteca' : 'Etapas de processo'}>
+            <Layers size={15} className="text-text-disabled" />
+          </PanelHeader>
+          <div className="flex min-h-0 flex-1 flex-col p-2.5">
+            {board === 'layout' ? (
+              <LibraryPanel onInsert={handleInsert} />
+            ) : (
+              <FlowLibraryPanel onInsert={handleFlowInsert} />
+            )}
+          </div>
         </aside>
 
-        <main className="flex-1 relative min-w-0 min-h-0">
-          <EditorCanvas registerHandle={registerHandle} onDraggingChange={setCanvasDragging} />
-
-          <div className="absolute top-3 left-3 flex flex-col gap-1 bg-surface border border-border rounded-lg shadow-sm p-1">
-            <IconButton label="Aumentar zoom" onClick={() => canvasHandleRef.current?.zoomIn()}>
-              <Plus size={18} />
-            </IconButton>
-            <IconButton label="Diminuir zoom" onClick={() => canvasHandleRef.current?.zoomOut()}>
-              <Minus size={18} />
-            </IconButton>
-            <IconButton label="Ajustar à tela" onClick={() => canvasHandleRef.current?.fitToView()}>
-              <Maximize size={18} />
-            </IconButton>
+        {/* Prancheta */}
+        <main className="relative min-h-0 min-w-0 flex-1">
+          {/* A troca de prancheta é uma mudança de contexto: um fade curto explica que a área
+              inteira mudou, sem animar o conteúdo do canvas (que é Konva e caro de animar). */}
+          <div key={board} className="absolute inset-0 animate-fade-in">
+          {board === 'layout' ? (
+            <EditorCanvas
+              registerHandle={registerHandle}
+              onDraggingChange={setCanvasDragging}
+              showMinimap
+              overlay={
+                <CanvasControls
+                  onZoomIn={() => canvasHandleRef.current?.zoomIn()}
+                  onZoomOut={() => canvasHandleRef.current?.zoomOut()}
+                  onFitToView={() => canvasHandleRef.current?.fitToView()}
+                  onCenterOnSelection={() => canvasHandleRef.current?.centerOnSelection()}
+                  onExportPng={() => canvasHandleRef.current?.exportPng()}
+                />
+              }
+            />
+          ) : (
+            <FlowCanvas registerHandle={registerFlowHandle} />
+          )}
           </div>
 
-          <div className="absolute top-3 left-16 flex gap-1 bg-surface border border-border rounded-lg shadow-sm p-1">
-            <IconButton label="Desfazer" onClick={undo}>
-              <Undo2 size={18} />
-            </IconButton>
-            <IconButton label="Refazer" onClick={redo}>
-              <Redo2 size={18} />
-            </IconButton>
-          </div>
-
-          <div className="absolute top-3 right-3 flex flex-col gap-1 bg-surface border border-border rounded-lg shadow-sm p-1">
-            <IconButton label="Alternar grade" active={gridVisible} onClick={toggleGrid}>
-              <Grid3x3 size={18} />
-            </IconButton>
-            <IconButton label="Alternar snap" active={snapEnabled} onClick={() => setSnapEnabled(!snapEnabled)}>
-              <Magnet size={18} />
-            </IconButton>
-            <IconButton label="Mostrar fluxo sobre o layout" active={flowOverlayVisible} onClick={toggleFlowOverlay}>
-              <Workflow size={18} />
-            </IconButton>
-            <IconButton
-              label="Configurar ambiente"
-              active={environmentOpen}
-              onClick={() => {
-                selectObject(null)
-                setMetricsOpen(false)
-                setEnvironmentOpen((v) => !v)
-              }}
-            >
-              <Warehouse size={18} />
-            </IconButton>
-            <IconButton
-              label="Métricas do projeto"
-              active={metricsOpen}
-              onClick={() => {
-                selectObject(null)
-                setEnvironmentOpen(false)
-                setMetricsOpen((v) => !v)
-              }}
-            >
-              <BarChart3 size={18} />
-            </IconButton>
-            <IconButton label="Exportar como imagem (PNG)" onClick={() => canvasHandleRef.current?.exportPng()}>
-              <Download size={18} />
-            </IconButton>
-          </div>
-
-          {environmentOpen && (
-            <aside className="hidden md:block absolute bottom-3 right-3 w-72 bg-surface border border-border rounded-lg shadow-sm p-4 animate-panel-in">
-              <EnvironmentPanel />
-            </aside>
+          {board === 'flow' && (
+            <div className="pointer-events-none absolute inset-0">
+              <div className="pointer-events-auto absolute left-3 top-3 flex flex-col gap-0.5 rounded-xl border border-border bg-surface/95 p-1 shadow-sm backdrop-blur-sm">
+                <IconButton
+                  label="Aumentar zoom"
+                  size="sm"
+                  tooltip
+                  tooltipSide="right"
+                  onClick={() => flowCanvasHandleRef.current?.zoomIn()}
+                >
+                  <Plus size={18} />
+                </IconButton>
+                <IconButton
+                  label="Diminuir zoom"
+                  size="sm"
+                  tooltip
+                  tooltipSide="right"
+                  onClick={() => flowCanvasHandleRef.current?.zoomOut()}
+                >
+                  <Minus size={18} />
+                </IconButton>
+                <span aria-hidden="true" className="mx-1.5 my-0.5 h-px bg-border" />
+                <IconButton
+                  label="Ajustar à tela"
+                  size="sm"
+                  tooltip
+                  tooltipSide="right"
+                  onClick={() => flowCanvasHandleRef.current?.fitToView()}
+                >
+                  <Maximize size={18} />
+                </IconButton>
+              </div>
+            </div>
           )}
 
-          {metricsOpen && (
-            <aside className="hidden md:block absolute bottom-3 right-3 w-72 max-h-[calc(100%-1.5rem)] overflow-y-auto bg-surface border border-border rounded-lg shadow-sm p-4 animate-panel-in">
-              <MetricsPanel />
-            </aside>
-          )}
-
-          {selectedObject && (
-            <aside className="hidden md:block absolute top-3 right-16 w-72 bg-surface border border-border rounded-lg shadow-sm p-4 animate-panel-in">
-              <PropertiesPanel object={selectedObject} hasOverlap={overlappingIds.has(selectedObject.id)} boundsStatus={selectedBoundsStatus} />
-            </aside>
-          )}
-
-          {hasMultiSelection && (
-            <aside className="hidden md:block absolute top-3 right-16 w-72 bg-surface border border-border rounded-lg shadow-sm p-4 animate-panel-in">
-              <SelectionToolbar />
-            </aside>
-          )}
-
-          {multiSelectMode && (
-            <div className="md:hidden absolute top-14 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-primary text-white rounded-full pl-3 pr-1 py-1 shadow-sm text-sm font-medium">
+          {multiSelectMode && board === 'layout' && (
+            <div className="absolute left-1/2 top-14 flex -translate-x-1/2 items-center gap-2 rounded-full bg-primary py-1 pl-3 pr-1 text-sm font-medium text-white shadow-sm animate-drop-in md:hidden">
               <MousePointerClick size={16} />
               {selectedIds.length} selecionado{selectedIds.length === 1 ? '' : 's'}
               <button
                 onClick={() => setMultiSelectMode(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-white/20 hover:bg-white/30"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 transition-colors duration-150 hover:bg-white/30"
                 aria-label="Concluir seleção"
               >
                 <Check size={16} />
               </button>
             </div>
           )}
-        </main>
-      </div>
-      )}
 
-      {board === 'flow' && (
-      <div className="flex-1 flex overflow-hidden relative">
-        <aside className="hidden md:block w-64 border-r border-border bg-surface overflow-y-auto p-3">
-          <FlowLibraryPanel onInsert={handleFlowInsert} />
-        </aside>
-
-        <main className="flex-1 relative min-w-0 min-h-0">
-          <FlowCanvas registerHandle={registerFlowHandle} />
-
-          <div className="absolute top-3 left-3 flex flex-col gap-1 bg-surface border border-border rounded-lg shadow-sm p-1">
-            <IconButton label="Aumentar zoom" onClick={() => flowCanvasHandleRef.current?.zoomIn()}>
-              <Plus size={18} />
-            </IconButton>
-            <IconButton label="Diminuir zoom" onClick={() => flowCanvasHandleRef.current?.zoomOut()}>
-              <Minus size={18} />
-            </IconButton>
-            <IconButton label="Ajustar à tela" onClick={() => flowCanvasHandleRef.current?.fitToView()}>
-              <Maximize size={18} />
-            </IconButton>
+          {/* Abrir a biblioteca no tablet, onde a barra lateral não cabe */}
+          <div className="absolute left-3 bottom-3 hidden md:block lg:hidden">
+            <Button variant="secondary" size="sm" onClick={() => setLibraryOpen(true)} className="shadow-sm">
+              <Plus size={16} />
+              Biblioteca
+            </Button>
           </div>
-
-          {(selectedFlowNodeId || selectedFlowConnectionId) && (
-            <aside className="hidden md:block absolute top-3 right-3 w-72 bg-surface border border-border rounded-lg shadow-sm p-4 animate-panel-in">
-              <FlowPropertiesPanel />
-            </aside>
-          )}
         </main>
-      </div>
-      )}
 
+        {/* Propriedades / contexto */}
+        <aside className="hidden w-[288px] shrink-0 flex-col border-l border-border bg-surface md:flex xl:w-[312px]">
+          {board === 'layout' ? (
+            <>
+              <div className="flex h-12 shrink-0 items-center border-b border-border px-2">
+                <SegmentedControl
+                  ariaLabel="Painel lateral"
+                  size="sm"
+                  options={SIDE_PANEL_OPTIONS}
+                  value={sidePanelTab}
+                  onChange={setSidePanelTab}
+                  className="w-full [&>button]:flex-1"
+                />
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto p-3 scrollbar-slim">
+                {sidePanelTab === 'properties' && (
+                  <>
+                    {selectedObject && (
+                      <div className="animate-fade-in">
+                        <PropertiesPanel
+                          object={selectedObject}
+                          hasOverlap={overlappingIds.has(selectedObject.id)}
+                          boundsStatus={selectedBoundsStatus}
+                        />
+                      </div>
+                    )}
+                    {hasMultiSelection && (
+                      <div className="animate-fade-in">
+                        <SelectionToolbar />
+                      </div>
+                    )}
+                    {!selectedObject && !hasMultiSelection && <PropertiesEmptyState />}
+                  </>
+                )}
+                {sidePanelTab === 'environment' && (
+                  <div className="animate-fade-in">
+                    <EnvironmentPanel />
+                  </div>
+                )}
+                {sidePanelTab === 'metrics' && (
+                  <div className="animate-fade-in">
+                    <MetricsPanel />
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <PanelHeader title="Propriedades" />
+              <div className="min-h-0 flex-1 overflow-y-auto p-3 scrollbar-slim">
+                {hasFlowSelection ? (
+                  <div className="animate-fade-in">
+                    <FlowPropertiesPanel />
+                  </div>
+                ) : (
+                  <PropertiesEmptyState />
+                )}
+              </div>
+            </>
+          )}
+        </aside>
+      </div>
+
+      {/* Barra de ações — mobile */}
       {board === 'layout' && (
-      <footer className="flex items-center justify-around gap-1 px-2 py-2 border-t border-border bg-surface shrink-0 md:hidden">
-        <IconButton
-          label="Inserir objeto"
-          onClick={() => {
-            selectObject(null)
-            setLibraryOpen(true)
-          }}
-        >
-          <Plus size={22} />
-        </IconButton>
-        {selectedIds.length > 0 && (
-          <>
-            <IconButton label="Girar -90°" onClick={() => rotateSelected(-90)}>
-              <RotateCcw size={22} />
-            </IconButton>
-            <IconButton label="Girar +90°" onClick={() => rotateSelected(90)}>
-              <RotateCw size={22} />
-            </IconButton>
-            <IconButton label="Duplicar" onClick={duplicateSelected}>
-              <Copy size={22} />
-            </IconButton>
-            <IconButton label="Excluir" onClick={deleteSelected}>
-              <Trash2 size={22} className="text-danger" />
-            </IconButton>
-          </>
-        )}
-      </footer>
+        <footer className="flex shrink-0 items-center justify-around gap-1 border-t border-border bg-surface px-2 py-2 md:hidden">
+          <IconButton
+            label="Inserir objeto"
+            onClick={() => {
+              selectObject(null)
+              setLibraryOpen(true)
+            }}
+          >
+            <Plus size={22} />
+          </IconButton>
+          <IconButton label="Desfazer" disabled={!canUndo} onClick={undo}>
+            <Undo2 size={22} />
+          </IconButton>
+          <IconButton label="Refazer" disabled={!canRedo} onClick={redo}>
+            <Redo2 size={22} />
+          </IconButton>
+          {selectedIds.length > 0 && (
+            <>
+              <IconButton label="Girar -90°" onClick={() => rotateSelected(-90)}>
+                <RotateCcw size={22} />
+              </IconButton>
+              <IconButton label="Girar +90°" onClick={() => rotateSelected(90)}>
+                <RotateCw size={22} />
+              </IconButton>
+              <IconButton label="Duplicar" onClick={duplicateSelected}>
+                <Copy size={22} />
+              </IconButton>
+              <IconButton label="Excluir" onClick={deleteSelected}>
+                <Trash2 size={22} className="text-danger" />
+              </IconButton>
+            </>
+          )}
+        </footer>
       )}
 
       {board === 'flow' && (
-      <footer className="flex items-center justify-around gap-1 px-2 py-2 border-t border-border bg-surface shrink-0 md:hidden">
-        <IconButton
-          label="Inserir etapa"
-          onClick={() => {
-            selectFlowNode(null)
-            selectFlowConnection(null)
-            setLibraryOpen(true)
-          }}
-        >
-          <Plus size={22} />
-        </IconButton>
-        {selectedFlowNodeId && (
-          <>
-            <IconButton label="Duplicar" onClick={() => duplicateFlowNode(selectedFlowNodeId)}>
-              <Copy size={22} />
-            </IconButton>
-            <IconButton label="Excluir" onClick={() => deleteFlowNode(selectedFlowNodeId)}>
+        <footer className="flex shrink-0 items-center justify-around gap-1 border-t border-border bg-surface px-2 py-2 md:hidden">
+          <IconButton
+            label="Inserir etapa"
+            onClick={() => {
+              selectFlowNode(null)
+              selectFlowConnection(null)
+              setLibraryOpen(true)
+            }}
+          >
+            <Plus size={22} />
+          </IconButton>
+          {selectedFlowNodeId && (
+            <>
+              <IconButton label="Duplicar" onClick={() => duplicateFlowNode(selectedFlowNodeId)}>
+                <Copy size={22} />
+              </IconButton>
+              <IconButton label="Excluir" onClick={() => deleteFlowNode(selectedFlowNodeId)}>
+                <Trash2 size={22} className="text-danger" />
+              </IconButton>
+            </>
+          )}
+          {selectedFlowConnectionId && !selectedFlowNodeId && (
+            <IconButton label="Excluir conexão" onClick={() => deleteFlowConnection(selectedFlowConnectionId)}>
               <Trash2 size={22} className="text-danger" />
             </IconButton>
-          </>
-        )}
-        {selectedFlowConnectionId && !selectedFlowNodeId && (
-          <IconButton label="Excluir conexão" onClick={() => deleteFlowConnection(selectedFlowConnectionId)}>
-            <Trash2 size={22} className="text-danger" />
-          </IconButton>
-        )}
-      </footer>
+          )}
+        </footer>
       )}
 
+      {/* Gaveta da biblioteca — mobile e tablet */}
       {board === 'layout' && libraryOpen && (
-        <BottomSheet title="Biblioteca de objetos" onClose={() => setLibraryOpen(false)}>
-          <LibraryPanel onInsert={handleInsert} />
-        </BottomSheet>
+        <>
+          <BottomSheet title="Biblioteca de objetos" onClose={() => setLibraryOpen(false)}>
+            <LibraryPanel onInsert={handleInsert} variant="grid" />
+          </BottomSheet>
+          <div className="fixed inset-0 z-30 hidden md:block lg:hidden">
+            <button
+              aria-label="Fechar biblioteca"
+              onClick={() => setLibraryOpen(false)}
+              className="absolute inset-0 bg-black/25 animate-fade-in"
+            />
+            <div className="absolute inset-y-0 left-0 flex w-[320px] flex-col border-r border-border bg-surface shadow-lg animate-slide-in-left">
+              <PanelHeader title="Biblioteca">
+                <button
+                  onClick={() => setLibraryOpen(false)}
+                  aria-label="Fechar biblioteca"
+                  className="rounded-md p-1 text-text-secondary transition-colors hover:bg-surface-alt hover:text-text-primary"
+                >
+                  ✕
+                </button>
+              </PanelHeader>
+              <div className="flex min-h-0 flex-1 flex-col p-3">
+                <LibraryPanel onInsert={handleInsert} />
+              </div>
+            </div>
+          </div>
+        </>
       )}
 
       {board === 'flow' && libraryOpen && (
-        <BottomSheet title="Biblioteca de etapas" onClose={() => setLibraryOpen(false)}>
-          <FlowLibraryPanel onInsert={handleFlowInsert} />
-        </BottomSheet>
+        <>
+          <BottomSheet title="Biblioteca de etapas" onClose={() => setLibraryOpen(false)}>
+            <FlowLibraryPanel onInsert={handleFlowInsert} />
+          </BottomSheet>
+          <div className="fixed inset-0 z-30 hidden md:block lg:hidden">
+            <button
+              aria-label="Fechar biblioteca"
+              onClick={() => setLibraryOpen(false)}
+              className="absolute inset-0 bg-black/25 animate-fade-in"
+            />
+            <div className="absolute inset-y-0 left-0 flex w-[320px] flex-col border-r border-border bg-surface shadow-lg animate-slide-in-left">
+              <PanelHeader title="Etapas de processo" />
+              <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-3 scrollbar-slim">
+                <FlowLibraryPanel onInsert={handleFlowInsert} />
+              </div>
+            </div>
+          </div>
+        </>
       )}
 
       {board === 'layout' && selectedObject && (

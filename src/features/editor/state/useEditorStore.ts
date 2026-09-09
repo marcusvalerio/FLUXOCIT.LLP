@@ -33,6 +33,11 @@ export interface Camera {
   zoom: number
 }
 
+/** Ferramenta ativa da prancheta. 'select' é o padrão (clicar seleciona, arrastar em área vazia
+ * faz marquee); 'pan' transforma o arraste com o botão esquerdo em deslocamento da prancheta,
+ * para quem prefere uma ferramenta explícita ao invés de botão direito / espaço. */
+export type CanvasTool = 'select' | 'pan'
+
 interface EditorState {
   layoutId: string | null
   layoutName: string
@@ -44,6 +49,10 @@ interface EditorState {
   objects: LayoutObject[]
   selectedIds: string[]
   camera: Camera
+  canvasTool: CanvasTool
+  /** True enquanto a barra de espaço estiver pressionada: o arraste vira pan temporário, então
+   * os objetos param de ser arrastáveis para o gesto não fazer as duas coisas ao mesmo tempo. */
+  spacePanActive: boolean
   snapEnabled: boolean
   gridVisible: boolean
   /** Layout board: shows connections from the Fluxo board whose endpoints are both linked to a
@@ -95,6 +104,8 @@ interface EditorState {
   undo: () => void
   redo: () => void
   setCamera: (camera: Partial<Camera>) => void
+  setCanvasTool: (tool: CanvasTool) => void
+  setSpacePanActive: (active: boolean) => void
   setSnapEnabled: (enabled: boolean) => void
   toggleGrid: () => void
   setSaveStatus: (status: SaveStatus) => void
@@ -130,6 +141,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   objects: [],
   selectedIds: [],
   camera: { x: 0, y: 0, zoom: 1 },
+  canvasTool: 'select',
+  spacePanActive: false,
   snapEnabled: true,
   gridVisible: true,
   flowOverlayVisible: false,
@@ -549,6 +562,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   setCamera: (camera) => set({ camera: { ...get().camera, ...camera } }),
+  setCanvasTool: (tool) => set({ canvasTool: tool }),
+  setSpacePanActive: (active) => {
+    if (get().spacePanActive !== active) set({ spacePanActive: active })
+  },
   setSnapEnabled: (enabled) => set({ snapEnabled: enabled }),
   toggleGrid: () => set({ gridVisible: !get().gridVisible }),
   setSaveStatus: (status) => set({ saveStatus: status }),
