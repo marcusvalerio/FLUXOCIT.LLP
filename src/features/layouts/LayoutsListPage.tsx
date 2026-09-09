@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Copy, LayoutGrid, LogOut, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Copy, LayoutGrid, Pencil, Plus, Trash2 } from 'lucide-react'
 import { layoutRepository } from '../../shared/data/repository'
-import { useAuthStore } from '../auth/state/useAuthStore'
 import { DEFAULT_ENV_HEIGHT_M, DEFAULT_ENV_WIDTH_M } from '../editor/state/useEditorStore'
-import { MigrationBanner } from './MigrationBanner'
 import { Button } from '../../shared/ui/Button'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { Panel } from '../../shared/ui/Panel'
@@ -12,10 +10,10 @@ import { IconButton } from '../../shared/ui/IconButton'
 import { ThemeToggle } from '../../shared/ui/ThemeToggle'
 import type { LayoutSummary } from '../../types/layout'
 
+/** Ambiente de projetos — a porta de entrada do app. Abre sem conta e sem sessão: os projetos
+ * ficam neste dispositivo (LocalLayoutRepository, via a facade shared/data/repository). */
 export function LayoutsListPage() {
   const navigate = useNavigate()
-  const user = useAuthStore((s) => s.user)
-  const logout = useAuthStore((s) => s.logout)
 
   const [layouts, setLayouts] = useState<LayoutSummary[]>([])
   const [loading, setLoading] = useState(true)
@@ -36,7 +34,7 @@ export function LayoutsListPage() {
     try {
       setLayouts(await layoutRepository.listLayouts())
     } catch {
-      setLoadError('Não foi possível carregar seus projetos. Verifique sua conexão e tente novamente.')
+      setLoadError('Não foi possível carregar seus projetos neste dispositivo. Tente novamente.')
     } finally {
       setLoading(false)
     }
@@ -98,34 +96,23 @@ export function LayoutsListPage() {
     }
   }
 
-  async function handleLogout() {
-    await logout()
-    navigate('/login', { replace: true })
-  }
-
   return (
     <div className="min-h-dvh bg-bg">
       <header className="border-b border-border bg-surface">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between gap-2">
           <h1 className="font-display text-xl font-semibold text-text-primary shrink-0">FluxoCit</h1>
           <div className="flex items-center gap-2 min-w-0">
-            {user && <span className="text-xs text-text-secondary truncate hidden sm:inline">{user.email}</span>}
             <ThemeToggle />
             <Button variant="primary" onClick={() => setCreating(true)}>
               <Plus size={18} />
               <span className="hidden sm:inline">Novo projeto</span>
             </Button>
-            <IconButton label="Sair" onClick={handleLogout}>
-              <LogOut size={18} />
-            </IconButton>
           </div>
         </div>
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-6">
         <h2 className="font-heading text-lg font-semibold text-text-primary mb-4">Meus projetos</h2>
-
-        <MigrationBanner onImported={refresh} />
 
         {creating && (
           <Panel className="p-4 mb-4">

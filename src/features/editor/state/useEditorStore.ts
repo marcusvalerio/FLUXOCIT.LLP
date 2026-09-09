@@ -86,6 +86,10 @@ interface EditorState {
   sendSelectedBackward: () => void
   moveManyLive: (updates: { id: string; x: number; y: number }[]) => void
   commitMany: (updates: { id: string; patch: Partial<LayoutObject> }[]) => void
+  commitDragPositions: (
+    origin: { id: string; x: number; y: number }[],
+    final: { id: string; x: number; y: number }[],
+  ) => void
   alignSelected: (mode: AlignMode) => void
   distributeSelected: (axis: DistributeAxis) => void
   undo: () => void
@@ -411,6 +415,31 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       objects: objects.map((o) => {
         const patch = byId.get(o.id)
         return patch ? { ...o, ...patch } : o
+      }),
+      history: { past: [...history.past, before].slice(-MAX_HISTORY), future: [] },
+    })
+  },
+
+  /**
+   * Fim de um arraste: aplica as posições finais e registra como passo de undo as posições de
+   * ANTES do gesto. Necessário porque durante o arraste moveObjectLive/moveManyLive já alteraram
+   * `objects` sem tocar no histórico — um commitMany aqui gravaria o estado já movido como
+   * "anterior", e desfazer logo após mover não devolveria o objeto ao lugar de origem.
+   */
+  commitDragPositions: (origin, final) => {
+    const { objects, history } = get()
+    const originById = new Map(origin.map((u) => [u.id, u]))
+    const finalById = new Map(final.map((u) => [u.id, u]))
+    const before = snapshot(
+      objects.map((o) => {
+        const u = originById.get(o.id)
+        return u ? { ...o, x: u.x, y: u.y } : o
+      }),
+    )
+    set({
+      objects: objects.map((o) => {
+        const u = finalById.get(o.id)
+        return u ? { ...o, x: u.x, y: u.y } : o
       }),
       history: { past: [...history.past, before].slice(-MAX_HISTORY), future: [] },
     })
