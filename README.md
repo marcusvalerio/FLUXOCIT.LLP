@@ -196,6 +196,15 @@ npm run lint      # lint (oxlint)
       solto, etiqueta de dimensões na seleção e camada de motion curta
       com `prefers-reduced-motion` respeitado
 
+- [x] Fase 12 — ARGUS.LLP: renomeação e posicionamento do produto (marca
+      própria, camadas Layout → Flow → Intelligence → Simulation), sistema
+      de ferramentas do editor (selecionar, mover prancheta, parede, área,
+      medir, inserir objeto, com atalhos e faixa de contexto), seleção em
+      área correta para objetos rotacionados, alças a partir das capacidades
+      declaradas por tipo, histórico único de projeto cobrindo Layout **e**
+      Fluxo, e autenticação da aplicação por modo (local sem conta /
+      multiusuário contra Worker + D1) com ownership verificado no servidor
+
 Fora do escopo até aqui (aguardando instrução): editor 3D, times/
 organizações compartilhadas, deploy automático (CI/CD). O frontend
 pode ser publicado no Vercel a partir do GitHub (`vercel.json`); o

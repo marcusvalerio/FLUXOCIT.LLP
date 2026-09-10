@@ -166,6 +166,22 @@ gesto, não a sorte de onde o cursor estava.
 - Toggle de snap-to-grid acessível (ícone de ímã na barra de ações);
   estado persistido por sessão do usuário (não por layout).
 
+### 3.8.1 Ferramentas
+
+A ferramenta ativa é sempre visível (barra inferior + faixa de contexto sobre
+a prancheta, que some ao voltar para Selecionar). Atalhos: **V** selecionar,
+**H** mover prancheta, **W** parede, **A** área, **M** medir, **P** inserir
+objeto; **Esc** volta para Selecionar e desarma a inserção.
+
+Enquanto uma ferramenta de desenho está ativa os objetos deixam de ser
+arrastáveis — desenhar uma parede por cima de um rack nunca move o rack. No
+toque, um dedo desenha e dois dedos continuam sendo zoom/pan.
+
+Escolher um objeto na biblioteca (desktop) **arma** a inserção em vez de
+inserir às cegas no centro: a faixa de contexto diz o que está armado e o
+clique posiciona no ponto exato. Na gaveta de toque, escolher insere direto —
+um toque só, sem segundo passo.
+
 ### 3.9 Estado vazio da prancheta
 
 Projeto sem objetos mostra, no centro e discretamente, "Comece a montar

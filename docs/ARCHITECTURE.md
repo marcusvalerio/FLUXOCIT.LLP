@@ -185,6 +185,45 @@ permanecem intactos no navegador após a migração (não são apagados).
   por 401), nunca a única barreira — a barreira real é o filtro por
   `user_id` no Worker.
 
+## 3.1 Sistema de ferramentas (ARGUS)
+
+`features/editor/tools/toolRegistry.ts` descreve cada ferramenta — cursor, se
+desenha arrastando, se deixa objetos arrastáveis, atalho — e o canvas
+**consulta** esse registro em vez de espalhar condicionais por handler:
+
+| Ferramenta | Atalho | Gesto |
+|-----------|--------|-------|
+| Selecionar | V | clique seleciona, arraste move, arraste no vazio faz seleção em área |
+| Mover prancheta | H | arraste desloca (também botão direito / botão do meio / espaço) |
+| Parede | W | arraste desenha; Shift trava em 15° |
+| Área | A | arraste cria a área |
+| Medir | M | arraste mede a distância real (não cria objeto) |
+| Inserir objeto | P | escolher na biblioteca arma o tipo; clique posiciona |
+
+Acrescentar FLOW, CORRIDOR ou ANNOTATION é acrescentar uma entrada no
+registro e o tratamento do respectivo rascunho — nada mais do editor muda.
+
+A geometria dos gestos é pura e testável (`tools/draftGeometry.ts`): o canvas
+cuida de eventos e pixels, essas funções cuidam do que vira objeto.
+
+## 3.2 Responsabilidades: cena, editor e visualização
+
+A separação já existe na prática e é o que sustenta a evolução para as
+camadas seguintes (Flow → Intelligence → Simulation):
+
+| Papel | Onde vive | O que sabe |
+|-------|-----------|-----------|
+| **Cena** (estado do projeto) | `useEditorStore` — objetos, áreas, fluxo, dimensões, escala | nada de pixels ou eventos |
+| **Editor** (interação) | `tools/`, `canvas/EditorCanvas`, `SelectionTransformer`, snapping | traduz gesto em comando |
+| **Visualização** | `canvas/` (Konva), `Rulers`, `Minimap`, `ObjectThumbnail` | câmera, zoom, pan, desenho |
+| **Capacidades do objeto** | `objects/capabilities.ts` + catálogo | o que cada tipo permite |
+
+Toda mutação relevante passa por uma ação do store, e é isso que dá ao
+undo/redo um comportamento previsível: o histórico guarda o **projeto**
+(`EditorSnapshot` = objetos + nós + conexões), não a prancheta ativa —
+desfazer é uma ação do usuário sobre o projeto, esteja ele no Layout ou no
+Fluxo.
+
 ## 4. Arquitetura do editor 2D
 
 ### 4.1 Modelo de objetos do canvas

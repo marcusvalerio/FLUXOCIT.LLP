@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Copy, LayoutGrid, LogOut, Pencil, Plus, Trash2 } from 'lucide-react'
 import { layoutRepository } from '../../shared/data/repository'
@@ -34,7 +34,7 @@ export function LayoutsListPage() {
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
-  async function refresh() {
+  const refresh = useCallback(async function refresh() {
     setLoading(true)
     setLoadError(null)
     try {
@@ -48,11 +48,11 @@ export function LayoutsListPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [accountMode])
 
   useEffect(() => {
     refresh()
-  }, [])
+  }, [refresh])
 
   async function handleCreate() {
     const name = newName.trim() || 'Novo projeto'
