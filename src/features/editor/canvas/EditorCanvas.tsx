@@ -12,7 +12,7 @@ import { RULER_SIZE, Rulers } from './Rulers'
 import { GuideLines, type SnapGuides } from './GuideLines'
 import { SelectionTransformer } from './SelectionTransformer'
 import { useEditorStore, type Camera } from '../state/useEditorStore'
-import { getBoundingBox } from '../../../shared/lib/geometry'
+import { getBoundingBox, rectIntersectsObject } from '../../../shared/lib/geometry'
 import { computeSpatialViolations, findStorageOverlaps, getBoundsStatus } from '../../../shared/lib/spatialRules'
 import { cmToPx, pxToCm } from '../../../shared/lib/units'
 import { useIsDarkMode } from '../../../shared/lib/useIsDarkMode'
@@ -508,12 +508,9 @@ export function EditorCanvas({ registerHandle, onDraggingChange, overlay, showMi
         maxX: pxToCm(marqueeRect.x + marqueeRect.width, scalePxPerMeter),
         maxY: pxToCm(marqueeRect.y + marqueeRect.height, scalePxPerMeter),
       }
-      const hits = objects
-        .filter((o) => {
-          const box = getBoundingBox(o)
-          return box.minX < rectCm.maxX && box.maxX > rectCm.minX && box.minY < rectCm.maxY && box.maxY > rectCm.minY
-        })
-        .map((o) => o.id)
+      // Interseção com a pegada real (rotacionada) de cada objeto, não com seu bounding box —
+      // ver shared/lib/geometry.rectIntersectsObject.
+      const hits = objects.filter((o) => rectIntersectsObject(rectCm, o)).map((o) => o.id)
       if (hits.length > 0) selectMany(hits, marqueeShiftRef.current)
     }
     mouseModeRef.current = 'none'

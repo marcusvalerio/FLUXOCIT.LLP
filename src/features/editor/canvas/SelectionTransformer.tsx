@@ -1,7 +1,7 @@
 import { useEffect, useRef, type RefObject } from 'react'
 import { Transformer } from 'react-konva'
 import type Konva from 'konva'
-import { OBJECT_CATALOG } from '../objects/catalog'
+import { anchorsForResizeMode, getObjectCapabilities } from '../objects/capabilities'
 import { useEditorStore } from '../state/useEditorStore'
 import { cmToPx, normalizeDeg, pxToCm } from '../../../shared/lib/units'
 import type { LayoutObject } from '../../../types/layout'
@@ -75,15 +75,18 @@ export function SelectionTransformer({ nodesByIdRef, pxPerMeter }: SelectionTran
     commitObject(selectedObj.id, patch)
   }
 
-  const resizable = selectedObj ? OBJECT_CATALOG[selectedObj.objectType].resizable : false
+  // As alças vêm das capacidades declaradas pelo tipo (ver objects/capabilities.ts): elementos
+  // lineares só alongam, objetos de dimensão real não redimensionam, o resto usa as oito alças.
+  const capabilities = selectedObj ? getObjectCapabilities(selectedObj.objectType) : null
+  const anchors = capabilities ? anchorsForResizeMode(capabilities.resize) : []
   const minPx = cmToPx(MIN_SIZE_CM, pxPerMeter)
 
   return (
     <Transformer
       ref={transformerRef}
-      rotateEnabled
-      resizeEnabled={resizable}
-      enabledAnchors={resizable ? ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'top-center', 'bottom-center', 'middle-left', 'middle-right'] : []}
+      rotateEnabled={capabilities?.rotate ?? false}
+      resizeEnabled={anchors.length > 0}
+      enabledAnchors={anchors}
       rotationSnaps={ROTATION_SNAPS}
       rotationSnapTolerance={6}
       /* Alças generosas o bastante para o toque (44px de área efetiva com a folga do Konva) e
