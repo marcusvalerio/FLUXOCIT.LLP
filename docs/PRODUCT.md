@@ -1,4 +1,23 @@
-# FluxoCit — Definição do Produto
+# ARGUS.LLP — Definição do Produto
+
+**ARGUS.LLP — Logistics Planning & Intelligence.**
+
+> "Planejar o espaço. Entender a operação."
+
+O ARGUS não é um CAD genérico nem um desenhador de plantas: é uma
+plataforma especializada em operação logística, construída em camadas
+que se apoiam umas nas outras.
+
+| Camada | O que responde | Estado |
+|--------|----------------|--------|
+| **Layout 2D** | Onde cada coisa fica no espaço físico | núcleo do produto, em uso |
+| **Flow** | Como a operação acontece (etapas e ligações) | em uso, integrado ao Layout |
+| **Intelligence** | O que está errado ou subaproveitado no layout/fluxo | primeiras regras determinísticas |
+| **Simulation** | Como a operação se comporta no tempo | camada futura, separada (Three.js) |
+| **Optimization / AI** | Comparação de cenários e assistência | visão de longo prazo |
+
+Ordem deliberada: primeiro um modelo espacial e operacional confiável,
+depois inteligência sobre esse modelo. IA não é ponto de partida.
 
 ## 1. Problema
 
@@ -34,7 +53,7 @@ como o espaço está (ou deveria estar) organizado.
 
 ## 3. Proposta de valor
 
-FluxoCit é uma ferramenta de **planejamento visual de layout logístico em
+ARGUS.LLP é uma ferramenta de **planejamento visual de layout logístico em
 2D**, focada em ser:
 
 - **Rápida de usar** — montar um layout deve ser tão fluido quanto

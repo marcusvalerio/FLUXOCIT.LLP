@@ -35,10 +35,11 @@ function SectionTitle({ children }: { children: string }) {
 export function MetricsPanel() {
   const objects = useEditorStore((s) => s.objects)
   const flowNodes = useEditorStore((s) => s.flowNodes)
+  const flowConnections = useEditorStore((s) => s.flowConnections)
   const envWidthM = useEditorStore((s) => s.envWidthM)
   const envHeightM = useEditorStore((s) => s.envHeightM)
 
-  const m = computeProjectMetrics(objects, flowNodes, envWidthM, envHeightM)
+  const m = computeProjectMetrics(objects, flowNodes, envWidthM, envHeightM, flowConnections)
   const occupancy = computeOccupancyPercent(objects, envWidthM * 100, envHeightM * 100)
   const violations = computeSpatialViolations(objects, envWidthM * 100, envHeightM * 100)
   const criticalCount = violations.filter((v) => v.severity === 'critical').length
@@ -71,7 +72,28 @@ export function MetricsPanel() {
         <Row label="Docas" value={String(m.qtdDocas)} />
         <Row label="Comprimento de corredores" value={`${m.comprimentoCorredoresM.toFixed(1)} m`} />
         <Row label="Áreas" value={String(m.qtdAreas)} />
+      </div>
+
+      <div className="border-t border-border pt-3 space-y-2">
+        <SectionTitle>Operação</SectionTitle>
         <Row label="Etapas de fluxo" value={String(m.qtdEtapasFluxo)} />
+        <Row label="Conexões" value={String(m.qtdConexoesFluxo)} />
+        <Row label="Etapas isoladas" value={String(m.qtdEtapasIsoladas)} />
+        {/* Derivadas que só existem com dado suficiente — ausência é informação, não zero. */}
+        <Row
+          label="Distância do fluxo"
+          value={m.distanciaFluxoM === undefined ? '—' : `${m.distanciaFluxoM.toFixed(1)} m`}
+        />
+        <Row
+          label="Capacidade do gargalo"
+          value={m.capacidadeGargalo ? `${m.capacidadeGargalo.valor} ${m.capacidadeGargalo.unidade}` : '—'}
+        />
+        {(m.distanciaFluxoM === undefined || !m.capacidadeGargalo) && (
+          <p className="text-[11px] leading-tight text-text-disabled">
+            "—" indica dado insuficiente: a distância exige etapas conectadas e vinculadas a áreas;
+            o gargalo exige ao menos duas etapas com capacidade na mesma unidade de vazão.
+          </p>
+        )}
       </div>
 
       <div className="border-t border-border pt-3 space-y-2">

@@ -1,11 +1,11 @@
-# FluxoCit — Arquitetura
+# ARGUS.LLP — Arquitetura
 
 Ver também `docs/TECH_STACK.md` (escolhas de tecnologia e justificativa)
 e `docs/DATABASE.md` (modelo de dados).
 
 ## 1. Visão geral
 
-FluxoCit é uma aplicação **web SPA** (Single Page Application) escrita em
+ARGUS.LLP é uma aplicação **web SPA** (Single Page Application) escrita em
 React + TypeScript, com o **editor 2D como núcleo do produto**. O
 backend (Fase 9) é um Worker próprio na Cloudflare — **Cloudflare
 Workers + D1 + Hono**, sem Supabase — acessado pelo frontend via HTTP
@@ -184,6 +184,103 @@ permanecem intactos no navegador após a migração (não são apagados).
   defesa em profundidade para UX (evita renderizar telas que vão falhar
   por 401), nunca a única barreira — a barreira real é o filtro por
   `user_id` no Worker.
+
+## 3.1 Sistema de ferramentas (ARGUS)
+
+`features/editor/tools/toolRegistry.ts` descreve cada ferramenta — cursor, se
+desenha arrastando, se deixa objetos arrastáveis, atalho — e o canvas
+**consulta** esse registro em vez de espalhar condicionais por handler:
+
+| Ferramenta | Atalho | Gesto |
+|-----------|--------|-------|
+| Selecionar | V | clique seleciona, arraste move, arraste no vazio faz seleção em área |
+| Mover prancheta | H | arraste desloca (também botão direito / botão do meio / espaço) |
+| Parede | W | arraste desenha; Shift trava em 15° |
+| Área | A | arraste cria a área |
+| Medir | M | arraste mede a distância real (não cria objeto) |
+| Inserir objeto | P | escolher na biblioteca arma o tipo; clique posiciona |
+
+Acrescentar FLOW, CORRIDOR ou ANNOTATION é acrescentar uma entrada no
+registro e o tratamento do respectivo rascunho — nada mais do editor muda.
+
+A geometria dos gestos é pura e testável (`tools/draftGeometry.ts`): o canvas
+cuida de eventos e pixels, essas funções cuidam do que vira objeto.
+
+## 3.2 Responsabilidades: cena, editor e visualização
+
+A separação já existe na prática e é o que sustenta a evolução para as
+camadas seguintes (Flow → Intelligence → Simulation):
+
+| Papel | Onde vive | O que sabe |
+|-------|-----------|-----------|
+| **Cena** (estado do projeto) | `useEditorStore` — objetos, áreas, fluxo, dimensões, escala | nada de pixels ou eventos |
+| **Editor** (interação) | `tools/`, `canvas/EditorCanvas`, `SelectionTransformer`, snapping | traduz gesto em comando |
+| **Visualização** | `canvas/` (Konva), `Rulers`, `Minimap`, `ObjectThumbnail` | câmera, zoom, pan, desenho |
+| **Capacidades do objeto** | `objects/capabilities.ts` + catálogo | o que cada tipo permite |
+
+Toda mutação relevante passa por uma ação do store, e é isso que dá ao
+undo/redo um comportamento previsível: o histórico guarda o **projeto**
+(`EditorSnapshot` = objetos + nós + conexões), não a prancheta ativa —
+desfazer é uma ação do usuário sobre o projeto, esteja ele no Layout ou no
+Fluxo.
+
+## 3.3 Object Registry
+
+`objects/catalog.ts` continua sendo a definição-mãe de cada tipo (geometria,
+desenho técnico, campos editáveis). Sobre ela, duas camadas dizem como o
+editor deve **tratar** o objeto:
+
+| Módulo | Responde |
+|--------|----------|
+| `objects/roles.ts` | Papel logístico: linear, circulação, armazenagem, carga unitizada, equipamento móvel, área, estrutura |
+| `objects/capabilities.ts` | O que o objeto permite transformar (redimensionar em dois eixos, só no comprimento, ou nada) |
+| `objects/registry.ts` | `getObjectProfile()` — a visão completa: catálogo + papel + capacidades + descrição + limites de dimensão |
+
+O papel é a fonte única do comportamento: as alças do Transformer, o snap de
+extremidade e o snap logístico consultam o mesmo conjunto. Acrescentar um
+objeto é acrescentar uma entrada no catálogo (e um papel, se ele tiver
+comportamento próprio) — o núcleo do editor não muda.
+
+## 3.4 Snapping
+
+Três camadas, todas resolvidas com o mesmo limiar (8 px de tela convertidos
+para cm, então o encaixe tem a mesma força em qualquer zoom):
+
+1. **Arraste de objeto** (`shared/lib/snap.ts`): alinha caixas por aresta,
+   centro e alinhamento entre objetos, mais os limites do ambiente.
+2. **Snap logístico** (`objects/logisticsSnap.ts`): alvos que só existem pelo
+   significado — carga unitizada assenta no centro da estrutura de
+   armazenagem, equipamento móvel segue o eixo do corredor. Entram como
+   linhas-alvo no mesmo resolvedor; vence quem estiver mais perto.
+3. **Desenho** (`tools/pointSnapping.ts`): encaixe de **pontos**, por
+   prioridade — extremidade de elemento linear → centro de objeto → eixo do
+   elemento → grade. É o que faz duas paredes se encontrarem sem vão.
+
+## 3.5 Intelligence
+
+Camada de análise em `shared/lib/intelligence/`, independente da interface:
+funções puras de `AnalysisContext` (Layout + Flow + ambiente) para `Insight[]`.
+
+```
+Layout + Flow
+      ↓
+INSIGHT_RULES (layoutRules · flowRules · integrationRules)
+      ↓
+Insight { id, ruleId, severity, title, description, recommendation, targets }
+      ↓
+IntelligencePanel (só apresenta)
+```
+
+Quatro compromissos: determinística (mesma entrada, mesma saída, ordenada por
+severidade), explicável (cada insight carrega a regra que o gerou e o que
+fazer), testável (sem React, canvas ou store) e independente da UI. Sem IA
+generativa — primeiro o modelo confiável, depois inteligência sobre ele.
+
+As regras de Layout reaproveitam `spatialRules`; as de Flow validam o modelo
+operacional sem bloquear a edição; as de integração cruzam as duas camadas
+(vínculo quebrado, percurso longo entre áreas ligadas, fluxo sem âncora no
+espaço). O cálculo é adiado 350 ms e só roda com o painel visível: análise por
+quadro de arraste travaria o canvas.
 
 ## 4. Arquitetura do editor 2D
 

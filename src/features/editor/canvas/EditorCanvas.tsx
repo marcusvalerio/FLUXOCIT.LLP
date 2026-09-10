@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
-import { Stage, Layer, Rect } from 'react-konva'
+import { Stage, Layer, Line, Rect } from 'react-konva'
 import { Box } from 'lucide-react'
 import type Konva from 'konva'
 import { Environment } from './Environment'
@@ -12,17 +12,38 @@ import { RULER_SIZE, Rulers } from './Rulers'
 import { GuideLines, type SnapGuides } from './GuideLines'
 import { SelectionTransformer } from './SelectionTransformer'
 import { useEditorStore, type Camera } from '../state/useEditorStore'
-import { getBoundingBox } from '../../../shared/lib/geometry'
+import { getBoundingBox, rectIntersectsObject } from '../../../shared/lib/geometry'
 import { computeSpatialViolations, findStorageOverlaps, getBoundsStatus } from '../../../shared/lib/spatialRules'
 import { cmToPx, pxToCm } from '../../../shared/lib/units'
 import { useIsDarkMode } from '../../../shared/lib/useIsDarkMode'
 import { OBJECT_CATALOG } from '../objects/catalog'
 import { LIBRARY_DND_MIME } from '../library-panel/dragAndDrop'
+import { getTool } from '../tools/toolRegistry'
+import {
+  constrainAngle,
+  distanceCm,
+  formatDistance,
+  rectFromPoints,
+  wallFromPoints,
+  type PointCm,
+} from '../tools/draftGeometry'
+import { collectSnapCandidates, snapDraftPoint, type SnapPointKind } from '../tools/pointSnapping'
 import type { ObjectTypeKey } from '../../../types/layout'
 
 const MIN_ZOOM = 0.2
 const MAX_ZOOM = 4
 const MARQUEE_MIN_PX = 4
+/** Mesmo limiar do arrasto de objetos (ver canvas/ObjectNode): o encaixe tem uma força só. */
+const SNAP_THRESHOLD_SCREEN_PX = 8
+
+/** O que o encaixe pegou — dito em uma palavra, no ponto onde aconteceu. */
+const SNAP_LABEL: Record<string, string> = {
+  endpoint: 'extremidade',
+  center: 'centro',
+  edge: 'eixo',
+  grid: '',
+  none: '',
+}
 const EXPORT_PADDING_PX = 24
 /** The exported layout uses an opaque, blank paper-like backdrop rather than transparency. */
 const EXPORT_BG = '#F6F4F0'
@@ -64,7 +85,7 @@ export function EditorCanvas({ registerHandle, onDraggingChange, overlay, showMi
   const [marqueeRect, setMarqueeRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
   const [guides, setGuides] = useState<SnapGuides | null>(null)
   const [isDraggingObject, setIsDraggingObject] = useState(false)
-  const [cursor, setCursor] = useState<'default' | 'grab' | 'grabbing'>('default')
+  const [cursor, setCursor] = useState<'default' | 'grab' | 'grabbing' | 'crosshair'>('default')
   /** Realce da prancheta enquanto um item da biblioteca é arrastado sobre ela (drag & drop). */
   const [dropActive, setDropActive] = useState(false)
   const [cursorWorldM, setCursorWorldM] = useState<{ x: number; y: number } | null>(null)
@@ -73,7 +94,7 @@ export function EditorCanvas({ registerHandle, onDraggingChange, overlay, showMi
   const lastPinchCenter = useRef<{ x: number; y: number } | null>(null)
   const singleTouchPan = useRef<{ x: number; y: number } | null>(null)
   const spaceDownRef = useRef(false)
-  const mouseModeRef = useRef<'none' | 'pan' | 'marquee'>('none')
+  const mouseModeRef = useRef<'none' | 'pan' | 'marquee' | 'draft'>('none')
   const panLastScreenRef = useRef<{ x: number; y: number } | null>(null)
   const marqueeStartWorldRef = useRef<{ x: number; y: number } | null>(null)
   const marqueeShiftRef = useRef(false)
@@ -87,9 +108,21 @@ export function EditorCanvas({ registerHandle, onDraggingChange, overlay, showMi
   const selectMany = useEditorStore((s) => s.selectMany)
   const camera = useEditorStore((s) => s.camera)
   const setCamera = useEditorStore((s) => s.setCamera)
-  const canvasTool = useEditorStore((s) => s.canvasTool)
+  const activeTool = useEditorStore((s) => s.activeTool)
+  const tool = getTool(activeTool)
+  const placeObjectType = useEditorStore((s) => s.placeObjectType)
+  const measurement = useEditorStore((s) => s.measurement)
+  const setMeasurement = useEditorStore((s) => s.setMeasurement)
+  const createObject = useEditorStore((s) => s.createObject)
+  const snapEnabled = useEditorStore((s) => s.snapEnabled)
+  const gridStepM = useEditorStore((s) => s.gridStepM)
   const spacePanActive = useEditorStore((s) => s.spacePanActive)
   const setSpacePanActive = useEditorStore((s) => s.setSpacePanActive)
+  /** Gesto de desenho em andamento (parede, área, medição), em coordenadas de mundo (cm). */
+  const [draft, setDraft] = useState<{ start: PointCm; end: PointCm } | null>(null)
+  /** Alvo do último encaixe de ponto — desenhado como marcador enquanto o gesto acontece. */
+  const [draftSnap, setDraftSnap] = useState<{ point: PointCm; kind: SnapPointKind } | null>(null)
+  const shiftDownRef = useRef(false)
   const scalePxPerMeter = useEditorStore((s) => s.scalePxPerMeter)
   const gridVisible = useEditorStore((s) => s.gridVisible)
   const flowOverlayVisible = useEditorStore((s) => s.flowOverlayVisible)
@@ -178,6 +211,11 @@ export function EditorCanvas({ registerHandle, onDraggingChange, overlay, showMi
       return el && ['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName)
     }
     function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Shift') shiftDownRef.current = true
+      if (e.key === 'Escape') {
+        setDraft(null)
+        setDraftSnap(null)
+      }
       if (e.code === 'Space' && !isEditableTarget(e.target)) {
         if (!spaceDownRef.current) setCursor('grab')
         spaceDownRef.current = true
@@ -185,6 +223,7 @@ export function EditorCanvas({ registerHandle, onDraggingChange, overlay, showMi
       }
     }
     function onKeyUp(e: KeyboardEvent) {
+      if (e.key === 'Shift') shiftDownRef.current = false
       if (e.code === 'Space') {
         spaceDownRef.current = false
         setSpacePanActive(false)
@@ -210,8 +249,8 @@ export function EditorCanvas({ registerHandle, onDraggingChange, overlay, showMi
   // "selecionar" — feedback imediato de qual gesto o arraste vai produzir.
   useEffect(() => {
     if (mouseModeRef.current === 'pan') return
-    setCursor(canvasTool === 'pan' ? 'grab' : 'default')
-  }, [canvasTool])
+    setCursor(tool.cursor)
+  }, [tool])
 
   function clampZoom(z: number) {
     return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z))
@@ -348,6 +387,60 @@ export function EditorCanvas({ registerHandle, onDraggingChange, overlay, showMi
     })
   }
 
+  /** Ponto do mundo (cm) correspondente à posição atual do ponteiro no Stage. */
+  function pointerWorldCm(stage: Konva.Stage): PointCm | null {
+    const pointer = stage.getPointerPosition()
+    if (!pointer) return null
+    return {
+      x: pxToCm((pointer.x - camera.x) / camera.zoom, scalePxPerMeter),
+      y: pxToCm((pointer.y - camera.y) / camera.zoom, scalePxPerMeter),
+    }
+  }
+
+  /**
+   * Encaixe de um ponto do rascunho. O limiar é definido em pixels de tela e convertido para cm,
+   * então o "imã" tem sempre a mesma força na mão do usuário, em qualquer zoom.
+   */
+  function snapPointForDraft(raw: PointCm): PointCm {
+    const result = snapDraftPoint(raw, collectSnapCandidates(objects), {
+      thresholdCm: pxToCm(SNAP_THRESHOLD_SCREEN_PX / camera.zoom, scalePxPerMeter),
+      gridStepCm: gridStepM * 100,
+      enabled: snapEnabled,
+    })
+    setDraftSnap(result.target ? { point: result.target, kind: result.kind } : null)
+    return result.point
+  }
+
+  /** Extremidade do rascunho: trava de ângulo (Shift) antes do encaixe, nunca depois — senão a
+   * trava desfaria o encaixe que o usuário acabou de ver acontecer. */
+  function resolveDraftEnd(start: PointCm, raw: PointCm): PointCm {
+    const angled = shiftDownRef.current && activeTool !== 'area' ? constrainAngle(start, raw) : raw
+    return snapPointForDraft(angled)
+  }
+
+  function beginDraft(point: PointCm) {
+    const start = snapPointForDraft(point)
+    setDraft({ start, end: start })
+  }
+
+  /** Fecha o gesto de desenho: cria o objeto (parede/área) ou fixa a medição. */
+  function commitDraft(current: { start: PointCm; end: PointCm }) {
+    if (activeTool === 'measure') {
+      setMeasurement(distanceCm(current.start, current.end) > 0 ? current : null)
+      return
+    }
+    if (activeTool === 'wall') {
+      const thickness = OBJECT_CATALOG.wall.defaultLength
+      const geometry = wallFromPoints(current.start, current.end, thickness)
+      if (geometry) createObject({ objectType: 'wall', ...geometry })
+      return
+    }
+    if (activeTool === 'area') {
+      const geometry = rectFromPoints(current.start, current.end)
+      if (geometry) createObject({ objectType: 'area', ...geometry })
+    }
+  }
+
   function handleMouseDown(e: Konva.KonvaEventObject<MouseEvent>) {
     const stage = e.target.getStage()
     if (!stage) return
@@ -363,7 +456,7 @@ export function EditorCanvas({ registerHandle, onDraggingChange, overlay, showMi
     // move a prancheta. Ver docs/UX.md § Navegação da prancheta.
     //   · botão direito + arrastar   · botão do meio + arrastar
     //   · espaço + arrastar          · ferramenta "Mover prancheta" ativa
-    const panWithLeftButton = e.evt.button === 0 && (spaceDownRef.current || canvasTool === 'pan')
+    const panWithLeftButton = e.evt.button === 0 && (spaceDownRef.current || activeTool === 'pan')
     if (isMiddleButton || isRightButton || panWithLeftButton) {
       mouseModeRef.current = 'pan'
       panLastScreenRef.current = pointer
@@ -373,6 +466,22 @@ export function EditorCanvas({ registerHandle, onDraggingChange, overlay, showMi
       nodesById.current.forEach((node) => {
         if (node.isDragging()) node.stopDrag()
       })
+      return
+    }
+
+    // Ferramentas de desenho e de inserção assumem o clique esquerdo em qualquer ponto da
+    // prancheta — inclusive sobre um objeto, já que desenhar uma parede por cima de um rack é
+    // legítimo. Só a ferramenta Selecionar chega no marquee/seleção abaixo.
+    if (e.evt.button === 0 && (tool.draws || activeTool === 'place')) {
+      const point = pointerWorldCm(stage)
+      if (!point) return
+      e.evt.preventDefault()
+      if (activeTool === 'place') {
+        if (placeObjectType) addObject(placeObjectType, point.x, point.y)
+        return
+      }
+      mouseModeRef.current = 'draft'
+      beginDraft(point)
       return
     }
 
@@ -396,6 +505,12 @@ export function EditorCanvas({ registerHandle, onDraggingChange, overlay, showMi
     const worldXCm = pxToCm((pointer.x - camera.x) / camera.zoom, scalePxPerMeter)
     const worldYCm = pxToCm((pointer.y - camera.y) / camera.zoom, scalePxPerMeter)
     setCursorWorldM({ x: worldXCm / 100, y: worldYCm / 100 })
+
+    if (mouseModeRef.current === 'draft' && draft) {
+      const point = pointerWorldCm(stage)
+      if (point) setDraft({ start: draft.start, end: resolveDraftEnd(draft.start, point) })
+      return
+    }
 
     if (mouseModeRef.current === 'pan' && panLastScreenRef.current) {
       const dx = pointer.x - panLastScreenRef.current.x
@@ -423,12 +538,9 @@ export function EditorCanvas({ registerHandle, onDraggingChange, overlay, showMi
         maxX: pxToCm(marqueeRect.x + marqueeRect.width, scalePxPerMeter),
         maxY: pxToCm(marqueeRect.y + marqueeRect.height, scalePxPerMeter),
       }
-      const hits = objects
-        .filter((o) => {
-          const box = getBoundingBox(o)
-          return box.minX < rectCm.maxX && box.maxX > rectCm.minX && box.minY < rectCm.maxY && box.maxY > rectCm.minY
-        })
-        .map((o) => o.id)
+      // Interseção com a pegada real (rotacionada) de cada objeto, não com seu bounding box —
+      // ver shared/lib/geometry.rectIntersectsObject.
+      const hits = objects.filter((o) => rectIntersectsObject(rectCm, o)).map((o) => o.id)
       if (hits.length > 0) selectMany(hits, marqueeShiftRef.current)
     }
     mouseModeRef.current = 'none'
@@ -438,15 +550,37 @@ export function EditorCanvas({ registerHandle, onDraggingChange, overlay, showMi
   }
 
   function handleMouseUp() {
+    if (mouseModeRef.current === 'draft') {
+      if (draft) commitDraft(draft)
+      setDraft(null)
+      setDraftSnap(null)
+    }
     if (mouseModeRef.current === 'marquee') finishMarquee()
     mouseModeRef.current = 'none'
     panLastScreenRef.current = null
-    setCursor(spaceDownRef.current || canvasTool === 'pan' ? 'grab' : 'default')
+    setCursor(spaceDownRef.current ? 'grab' : tool.cursor)
   }
 
   function handleTouchStart(e: Konva.KonvaEventObject<TouchEvent>) {
     const stage = e.target.getStage()
     const touches = e.evt.touches
+
+    // Com uma ferramenta de desenho ativa, um dedo desenha (não desloca a prancheta) — dois
+    // dedos continuam sendo zoom/pan, então o gesto de navegar nunca é confundido com traçar.
+    if (touches.length === 1 && stage && (tool.draws || activeTool === 'place')) {
+      const point = pointerWorldCm(stage)
+      singleTouchPan.current = null
+      if (point) {
+        if (activeTool === 'place') {
+          if (placeObjectType) addObject(placeObjectType, point.x, point.y)
+        } else {
+          mouseModeRef.current = 'draft'
+          beginDraft(point)
+        }
+      }
+      return
+    }
+
     if (touches.length === 1 && stage && e.target === stage) {
       singleTouchPan.current = { x: touches[0].clientX, y: touches[0].clientY }
     } else {
@@ -461,6 +595,14 @@ export function EditorCanvas({ registerHandle, onDraggingChange, overlay, showMi
 
   function handleTouchMove(e: Konva.KonvaEventObject<TouchEvent>) {
     const touches = e.evt.touches
+
+    if (touches.length === 1 && mouseModeRef.current === 'draft' && draft) {
+      const stage = e.target.getStage()
+      const point = stage ? pointerWorldCm(stage) : null
+      if (point) setDraft({ start: draft.start, end: resolveDraftEnd(draft.start, point) })
+      e.evt.preventDefault()
+      return
+    }
 
     if (touches.length === 1 && singleTouchPan.current) {
       const dx = touches[0].clientX - singleTouchPan.current.x
@@ -508,6 +650,12 @@ export function EditorCanvas({ registerHandle, onDraggingChange, overlay, showMi
   }
 
   function handleTouchEnd(e: Konva.KonvaEventObject<TouchEvent>) {
+    if (mouseModeRef.current === 'draft' && e.evt.touches.length === 0) {
+      if (draft) commitDraft(draft)
+      setDraft(null)
+      setDraftSnap(null)
+      mouseModeRef.current = 'none'
+    }
     if (e.evt.touches.length === 0) singleTouchPan.current = null
     if (e.evt.touches.length < 2) {
       lastPinchDistance.current = null
@@ -520,6 +668,24 @@ export function EditorCanvas({ registerHandle, onDraggingChange, overlay, showMi
       selectObject(null)
     }
   }
+
+  /** Linha da ferramenta Medir: o rascunho enquanto o gesto acontece, ou a medição fixada. */
+  const measureSource = activeTool === 'measure' ? (draft ?? measurement) : measurement
+  const measureLine = measureSource
+    ? {
+        points: [
+          cmToPx(measureSource.start.x, scalePxPerMeter),
+          cmToPx(measureSource.start.y, scalePxPerMeter),
+          cmToPx(measureSource.end.x, scalePxPerMeter),
+          cmToPx(measureSource.end.y, scalePxPerMeter),
+        ],
+        label: formatDistance(distanceCm(measureSource.start, measureSource.end)),
+        screenX:
+          camera.x + cmToPx((measureSource.start.x + measureSource.end.x) / 2, scalePxPerMeter) * camera.zoom,
+        screenY:
+          camera.y + cmToPx((measureSource.start.y + measureSource.end.y) / 2, scalePxPerMeter) * camera.zoom,
+      }
+    : null
 
   const selectionBadge = (() => {
     if (selectedIds.length !== 1) return null
@@ -636,7 +802,7 @@ export function EditorCanvas({ registerHandle, onDraggingChange, overlay, showMi
                     else nodesById.current.delete(id)
                   }}
                   onSnapGuideChange={setGuides}
-                  draggable={canvasTool === 'select' && !spacePanActive}
+                  draggable={tool.allowsObjectDrag && !spacePanActive}
                   onDraggingChange={(dragging) => {
                     setIsDraggingObject(dragging)
                     onDraggingChange?.(dragging)
@@ -651,6 +817,64 @@ export function EditorCanvas({ registerHandle, onDraggingChange, overlay, showMi
                 camera={camera}
                 stageWidth={size.width}
                 stageHeight={size.height}
+              />
+            )}
+            {/* Rascunho da ferramenta ativa: parede como faixa na espessura real, área como
+                retângulo, medição como linha com cotas. Tudo em azul de interface e sem
+                listening, para nunca interceptar o gesto que o está desenhando. */}
+            {draft && activeTool === 'wall' && (
+              <Line
+                points={[
+                  cmToPx(draft.start.x, scalePxPerMeter),
+                  cmToPx(draft.start.y, scalePxPerMeter),
+                  cmToPx(draft.end.x, scalePxPerMeter),
+                  cmToPx(draft.end.y, scalePxPerMeter),
+                ]}
+                stroke="#0796D7"
+                strokeWidth={cmToPx(OBJECT_CATALOG.wall.defaultLength, scalePxPerMeter)}
+                opacity={0.45}
+                lineCap="butt"
+                listening={false}
+              />
+            )}
+            {draft && activeTool === 'area' && (
+              <Rect
+                x={cmToPx(Math.min(draft.start.x, draft.end.x), scalePxPerMeter)}
+                y={cmToPx(Math.min(draft.start.y, draft.end.y), scalePxPerMeter)}
+                width={cmToPx(Math.abs(draft.end.x - draft.start.x), scalePxPerMeter)}
+                height={cmToPx(Math.abs(draft.end.y - draft.start.y), scalePxPerMeter)}
+                fill="#0796D7"
+                opacity={0.14}
+                stroke="#0796D7"
+                strokeWidth={1.5 / camera.zoom}
+                dash={[6 / camera.zoom, 4 / camera.zoom]}
+                listening={false}
+              />
+            )}
+            {/* Marcador de encaixe: um losango no ponto exato em que a ponta vai cair. Discreto de
+                propósito — informa o encaixe sem competir com o desenho. */}
+            {draftSnap && draftSnap.kind !== 'grid' && (
+              <Rect
+                x={cmToPx(draftSnap.point.x, scalePxPerMeter)}
+                y={cmToPx(draftSnap.point.y, scalePxPerMeter)}
+                width={9 / camera.zoom}
+                height={9 / camera.zoom}
+                offsetX={4.5 / camera.zoom}
+                offsetY={4.5 / camera.zoom}
+                rotation={45}
+                stroke="#0796D7"
+                strokeWidth={1.5 / camera.zoom}
+                fill="#FFFFFF"
+                listening={false}
+              />
+            )}
+            {measureLine && (
+              <Line
+                points={measureLine.points}
+                stroke="#0796D7"
+                strokeWidth={1.5 / camera.zoom}
+                dash={[8 / camera.zoom, 4 / camera.zoom]}
+                listening={false}
               />
             )}
             {marqueeRect && (
@@ -712,6 +936,27 @@ export function EditorCanvas({ registerHandle, onDraggingChange, overlay, showMi
           style={{ left: selectionBadge.x, top: selectionBadge.y }}
         >
           {selectionBadge.label}
+        </div>
+      )}
+
+      {draftSnap && draftSnap.kind !== 'grid' && (
+        <div
+          className="pointer-events-none absolute z-10 -translate-x-1/2 translate-y-2 rounded-md border border-primary/40 bg-surface/95 px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary shadow-sm"
+          style={{
+            left: camera.x + cmToPx(draftSnap.point.x, scalePxPerMeter) * camera.zoom,
+            top: camera.y + cmToPx(draftSnap.point.y, scalePxPerMeter) * camera.zoom,
+          }}
+        >
+          {SNAP_LABEL[draftSnap.kind]}
+        </div>
+      )}
+
+      {measureLine && (
+        <div
+          className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-1/2 rounded-md border border-primary/40 bg-surface/95 px-2 py-1 font-heading text-[11px] font-semibold leading-none tabular-nums text-primary shadow-sm"
+          style={{ left: measureLine.screenX, top: measureLine.screenY }}
+        >
+          {measureLine.label}
         </div>
       )}
 

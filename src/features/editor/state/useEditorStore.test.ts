@@ -19,6 +19,69 @@ beforeEach(() => {
   useEditorStore.getState().loadLayout(emptyLayout())
 })
 
+describe('undo/redo do projeto (Layout + Fluxo no mesmo histórico)', () => {
+  it('desfaz a criação de uma etapa de Fluxo', () => {
+    useEditorStore.getState().addFlowNode('receiving', 200, 200)
+    expect(useEditorStore.getState().flowNodes).toHaveLength(1)
+
+    useEditorStore.getState().undo()
+    expect(useEditorStore.getState().flowNodes).toHaveLength(0)
+
+    useEditorStore.getState().redo()
+    expect(useEditorStore.getState().flowNodes).toHaveLength(1)
+  })
+
+  it('desfaz a exclusão de uma etapa, junto com as conexões que ela levava', () => {
+    const store = useEditorStore.getState()
+    store.addFlowNode('receiving', 0, 0)
+    store.addFlowNode('shipping', 400, 0)
+    const [from, to] = useEditorStore.getState().flowNodes
+    useEditorStore.getState().addFlowConnection(from!.id, to!.id, 'material')
+    expect(useEditorStore.getState().flowConnections).toHaveLength(1)
+
+    useEditorStore.getState().deleteFlowNode(from!.id)
+    expect(useEditorStore.getState().flowNodes).toHaveLength(1)
+    expect(useEditorStore.getState().flowConnections).toHaveLength(0)
+
+    useEditorStore.getState().undo()
+    expect(useEditorStore.getState().flowNodes).toHaveLength(2)
+    expect(useEditorStore.getState().flowConnections).toHaveLength(1)
+  })
+
+  it('desfaz o arraste de uma etapa devolvendo a posição de origem', () => {
+    useEditorStore.getState().addFlowNode('picking', 100, 100)
+    const node = useEditorStore.getState().flowNodes[0]!
+    const origin = { x: node.x, y: node.y }
+
+    useEditorStore.getState().moveFlowNodeLive(node.id, origin.x + 250, origin.y + 120)
+    useEditorStore.getState().commitFlowNodePosition(node.id, origin.x + 250, origin.y + 120, origin)
+
+    useEditorStore.getState().undo()
+    const undone = useEditorStore.getState().flowNodes[0]!
+    expect({ x: undone.x, y: undone.y }).toEqual(origin)
+  })
+
+  it('desfaz alteração de propriedade de uma etapa', () => {
+    useEditorStore.getState().addFlowNode('storage', 0, 0)
+    const id = useEditorStore.getState().flowNodes[0]!.id
+    useEditorStore.getState().setFlowNodeProperty(id, 'name', 'Armazenagem A')
+    expect(useEditorStore.getState().flowNodes[0]!.name).toBe('Armazenagem A')
+
+    useEditorStore.getState().undo()
+    expect(useEditorStore.getState().flowNodes[0]!.name).toBeUndefined()
+  })
+
+  it('uma ação no Layout não apaga o Fluxo ao ser desfeita', () => {
+    useEditorStore.getState().addFlowNode('receiving', 0, 0)
+    useEditorStore.getState().addObject('pallet', 500, 500)
+    expect(useEditorStore.getState().objects).toHaveLength(1)
+
+    useEditorStore.getState().undo()
+    expect(useEditorStore.getState().objects).toHaveLength(0)
+    expect(useEditorStore.getState().flowNodes).toHaveLength(1)
+  })
+})
+
 describe('useEditorStore', () => {
   it('desfazer devolve o objeto à posição anterior ao arraste (commitDragPositions)', () => {
     const store = useEditorStore.getState()

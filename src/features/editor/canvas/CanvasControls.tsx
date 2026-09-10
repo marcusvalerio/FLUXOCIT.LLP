@@ -7,12 +7,26 @@ import {
   Maximize,
   Minus,
   MousePointer2,
+  PackagePlus,
   Plus,
+  Ruler,
+  Square,
   Workflow,
 } from 'lucide-react'
-import type { ReactNode } from 'react'
+import type { ComponentType, ReactNode } from 'react'
 import { useEditorStore } from '../state/useEditorStore'
+import { EDITOR_TOOLS, type EditorToolId } from '../tools/toolRegistry'
 import { IconButton } from '../../../shared/ui/IconButton'
+
+/** Ícone de cada ferramenta — a identidade visual fica aqui, o comportamento no toolRegistry. */
+const TOOL_ICONS: Record<EditorToolId, ComponentType<{ size?: number }>> = {
+  select: MousePointer2,
+  pan: Hand,
+  wall: Minus,
+  area: Square,
+  measure: Ruler,
+  place: PackagePlus,
+}
 
 interface CanvasControlsProps {
   onZoomIn: () => void
@@ -51,8 +65,8 @@ export function CanvasControls({
   onExportPng,
 }: CanvasControlsProps) {
   const zoom = useEditorStore((s) => s.camera.zoom)
-  const canvasTool = useEditorStore((s) => s.canvasTool)
-  const setCanvasTool = useEditorStore((s) => s.setCanvasTool)
+  const activeTool = useEditorStore((s) => s.activeTool)
+  const setActiveTool = useEditorStore((s) => s.setActiveTool)
   const gridVisible = useEditorStore((s) => s.gridVisible)
   const toggleGrid = useEditorStore((s) => s.toggleGrid)
   const snapEnabled = useEditorStore((s) => s.snapEnabled)
@@ -94,24 +108,21 @@ export function CanvasControls({
       {/* Barra de ferramentas — escondida no mobile, onde a barra inferior fixa cumpre o papel. */}
       <div className="absolute bottom-3 left-1/2 hidden -translate-x-1/2 md:block">
         <Cluster>
-          <IconButton
-            label="Selecionar"
-            size="sm"
-            tooltip
-            active={canvasTool === 'select'}
-            onClick={() => setCanvasTool('select')}
-          >
-            <MousePointer2 size={18} />
-          </IconButton>
-          <IconButton
-            label="Mover prancheta (ou botão direito / espaço)"
-            size="sm"
-            tooltip
-            active={canvasTool === 'pan'}
-            onClick={() => setCanvasTool('pan')}
-          >
-            <Hand size={18} />
-          </IconButton>
+          {EDITOR_TOOLS.map((toolDef) => {
+            const Icon = TOOL_ICONS[toolDef.id]
+            return (
+              <IconButton
+                key={toolDef.id}
+                label={`${toolDef.label} (${toolDef.shortcut})`}
+                size="sm"
+                tooltip
+                active={activeTool === toolDef.id}
+                onClick={() => setActiveTool(toolDef.id)}
+              >
+                <Icon size={18} />
+              </IconButton>
+            )
+          })}
           <Divider />
           <IconButton label="Alternar grade" size="sm" tooltip active={gridVisible} onClick={toggleGrid}>
             <Grid3x3 size={18} />

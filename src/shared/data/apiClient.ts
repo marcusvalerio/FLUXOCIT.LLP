@@ -1,5 +1,5 @@
 /**
- * Base URL of the FluxoCit Worker API — see .env.example. Empty when `VITE_API_BASE_URL` is not
+ * Base URL of the ARGUS.LLP Worker API — see .env.example. Empty when `VITE_API_BASE_URL` is not
  * set, which is the normal case for the current local-only version: the app never talks to a
  * backend, so there is deliberately NO implicit fallback (a hardcoded `http://localhost:8787`
  * default would turn every accidental call into a "Failed to fetch"/CORS error in production).

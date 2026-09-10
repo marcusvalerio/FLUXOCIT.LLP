@@ -19,6 +19,7 @@ import {
   RotateCcw,
   RotateCw,
   Save,
+  Sparkles,
   Trash2,
   TriangleAlert,
   Undo2,
@@ -29,6 +30,7 @@ import { EditorCanvas, type EditorCanvasHandle } from './canvas/EditorCanvas'
 import { CanvasControls } from './canvas/CanvasControls'
 import { EnvironmentPanel } from './environment-panel/EnvironmentPanel'
 import { MetricsPanel } from './metrics-panel/MetricsPanel'
+import { IntelligencePanel } from './intelligence-panel/IntelligencePanel'
 import { LibraryPanel } from './library-panel/LibraryPanel'
 import { PropertiesPanel } from './properties-panel/PropertiesPanel'
 import { PropertiesEmptyState } from './properties-panel/PropertiesEmptyState'
@@ -37,6 +39,7 @@ import { FlowCanvas, type FlowCanvasHandle } from './flow/FlowCanvas'
 import { FlowLibraryPanel } from './flow/FlowLibraryPanel'
 import { FlowPropertiesPanel } from './flow/FlowPropertiesPanel'
 import { useEditorStore } from './state/useEditorStore'
+import { getTool, toolForShortcut } from './tools/toolRegistry'
 import { layoutRepository } from '../../shared/data/repository'
 import { findStorageOverlaps, getBoundsStatus } from '../../shared/lib/spatialRules'
 import { Button } from '../../shared/ui/Button'
@@ -44,11 +47,13 @@ import { IconButton } from '../../shared/ui/IconButton'
 import { SegmentedControl } from '../../shared/ui/SegmentedControl'
 import { ThemeToggle } from '../../shared/ui/ThemeToggle'
 import { BottomSheet } from '../../shared/ui/BottomSheet'
+import { BrandMark } from '../../shared/ui/BrandMark'
+import { OBJECT_CATALOG } from './objects/catalog'
 import type { ObjectTypeKey } from '../../types/layout'
 import type { FlowNodeType } from '../../types/flow'
 
 type Board = 'layout' | 'flow'
-type SidePanelTab = 'properties' | 'environment' | 'metrics'
+type SidePanelTab = 'properties' | 'environment' | 'metrics' | 'analysis'
 
 const BOARD_OPTIONS: { value: Board; label: string }[] = [
   { value: 'layout', label: 'Layout' },
@@ -59,6 +64,7 @@ const SIDE_PANEL_OPTIONS: { value: SidePanelTab; label: string }[] = [
   { value: 'properties', label: 'Propriedades' },
   { value: 'environment', label: 'Ambiente' },
   { value: 'metrics', label: 'Métricas' },
+  { value: 'analysis', label: 'Análise' },
 ]
 
 /** Rótulo e cor do indicador de salvamento no cabeçalho — estado, não decoração. */
@@ -105,6 +111,7 @@ export function EditorPage() {
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [environmentOpen, setEnvironmentOpen] = useState(false)
   const [metricsOpen, setMetricsOpen] = useState(false)
+  const [analysisOpen, setAnalysisOpen] = useState(false)
   const [sidePanelTab, setSidePanelTab] = useState<SidePanelTab>('properties')
   const [menuOpen, setMenuOpen] = useState(false)
   const [justSaved, setJustSaved] = useState(false)
@@ -117,6 +124,10 @@ export function EditorPage() {
   const [canvasDragging, setCanvasDragging] = useState(false)
   const [flowPropertiesCollapsed, setFlowPropertiesCollapsed] = useState(true)
 
+  const activeTool = useEditorStore((s) => s.activeTool)
+  const setActiveTool = useEditorStore((s) => s.setActiveTool)
+  const placeObjectType = useEditorStore((s) => s.placeObjectType)
+  const armPlaceObject = useEditorStore((s) => s.armPlaceObject)
   const layoutName = useEditorStore((s) => s.layoutName)
   const objects = useEditorStore((s) => s.objects)
   // Live drag updates (moveObjectLive/moveManyLive) change `objects` every frame without touching
@@ -305,6 +316,18 @@ export function EditorPage() {
         return
       }
 
+      // Desfazer/refazer valem nas duas pranchetas: o histórico é do projeto (ver useEditorStore).
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        undo()
+        return
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
+        e.preventDefault()
+        redo()
+        return
+      }
+
       if (board === 'flow') {
         if ((e.key === 'Delete' || e.key === 'Backspace') && selectedFlowNodeId) {
           e.preventDefault()
@@ -322,13 +345,18 @@ export function EditorPage() {
         return
       }
 
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
-        e.preventDefault()
-        undo()
-      } else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
-        e.preventDefault()
-        redo()
-      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.length > 0) {
+      // Atalhos de ferramenta (V/H/W/A/M/P), sempre sem modificador — Ctrl+A continua livre
+      // para outras ações e a digitação em campos já saiu no guard acima.
+      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        const toolId = toolForShortcut(e.key)
+        if (toolId) {
+          e.preventDefault()
+          setActiveTool(toolId)
+          return
+        }
+      }
+
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.length > 0) {
         e.preventDefault()
         deleteSelected()
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd' && selectedIds.length > 0) {
@@ -336,6 +364,7 @@ export function EditorPage() {
         duplicateSelected()
       } else if (e.key === 'Escape') {
         selectObject(null)
+        if (activeTool !== 'select') setActiveTool('select')
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -357,6 +386,8 @@ export function EditorPage() {
     selectFlowNode,
     selectFlowConnection,
     layoutId2,
+    activeTool,
+    setActiveTool,
   ])
 
   // Menu de ações secundárias: fecha ao clicar fora ou com Escape.
@@ -390,8 +421,11 @@ export function EditorPage() {
       <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-surface px-2 sm:px-3">
         {/* Identidade + projeto */}
         <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2.5">
-          <span className="hidden shrink-0 select-none font-display text-[15px] font-semibold tracking-tight text-text-primary lg:inline">
-            FluxoCit<span className="text-primary">.LLP</span>
+          <span className="hidden shrink-0 select-none items-center gap-2 lg:inline-flex">
+            <BrandMark size={22} title={null} className="text-text-primary" />
+            <span className="font-display text-[15px] font-semibold tracking-tight text-text-primary">
+              ARGUS<span className="text-primary">.LLP</span>
+            </span>
           </span>
           <span aria-hidden="true" className="hidden h-5 w-px bg-border lg:block" />
           <IconButton label="Voltar aos projetos" size="sm" tooltip tooltipSide="bottom" onClick={() => navigate('/projects')}>
@@ -416,7 +450,7 @@ export function EditorPage() {
 
         {/* Ações */}
         <div className="flex min-w-0 flex-1 items-center justify-end gap-1 sm:gap-1.5">
-          {board === 'layout' && (
+          {(
             <div className="hidden items-center gap-0.5 sm:flex">
               <IconButton label="Desfazer" size="sm" tooltip tooltipSide="bottom" disabled={!canUndo} onClick={undo}>
                 <Undo2 size={18} />
@@ -497,6 +531,17 @@ export function EditorPage() {
                       <BarChart3 size={16} className="text-text-secondary" />
                       Métricas do projeto
                     </button>
+                    <button
+                      role="menuitem"
+                      className={`${menuItemClass} md:hidden`}
+                      onClick={() => {
+                        setMenuOpen(false)
+                        setAnalysisOpen(true)
+                      }}
+                    >
+                      <Sparkles size={16} className="text-text-secondary" />
+                      Análise do projeto
+                    </button>
                     <div aria-hidden="true" className="my-1.5 h-px bg-border md:hidden" />
                     <button
                       role="menuitem"
@@ -546,7 +591,7 @@ export function EditorPage() {
           </PanelHeader>
           <div className="flex min-h-0 flex-1 flex-col p-2.5">
             {board === 'layout' ? (
-              <LibraryPanel onInsert={handleInsert} />
+              <LibraryPanel onPick={armPlaceObject} armedType={placeObjectType} />
             ) : (
               <FlowLibraryPanel onInsert={handleFlowInsert} />
             )}
@@ -609,6 +654,31 @@ export function EditorPage() {
                 >
                   <Maximize size={18} />
                 </IconButton>
+              </div>
+            </div>
+          )}
+
+          {/* Faixa de contexto: diz o que a ferramenta ativa faz e, na inserção, o que está
+              armado. É o que evita o "cliquei na biblioteca e nada aconteceu". */}
+          {board === 'layout' && activeTool !== 'select' && (
+            <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 animate-drop-in">
+              <div className="pointer-events-auto flex max-w-[min(92vw,34rem)] items-center gap-2 rounded-full border border-primary/30 bg-surface/95 py-1.5 pl-3 pr-1.5 shadow-sm backdrop-blur-sm">
+                <span className="font-heading text-[11px] font-semibold uppercase tracking-wide text-primary">
+                  {getTool(activeTool).label}
+                </span>
+                <span aria-hidden="true" className="h-3.5 w-px bg-border" />
+                <span className="truncate text-[11px] leading-tight text-text-secondary">
+                  {activeTool === 'place' && placeObjectType
+                    ? `${OBJECT_CATALOG[placeObjectType].label} — clique na prancheta para posicionar`
+                    : getTool(activeTool).hint}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setActiveTool('select')}
+                  className="rounded-full px-2 py-1 text-[11px] font-medium text-text-secondary transition-colors duration-150 hover:bg-surface-alt hover:text-text-primary"
+                >
+                  Concluir
+                </button>
               </div>
             </div>
           )}
@@ -680,6 +750,7 @@ export function EditorPage() {
                     <MetricsPanel />
                   </div>
                 )}
+                {sidePanelTab === 'analysis' && <IntelligencePanel active />}
               </div>
             </>
           ) : (
@@ -748,6 +819,12 @@ export function EditorPage() {
           >
             <Plus size={22} />
           </IconButton>
+          <IconButton label="Desfazer" disabled={!canUndo} onClick={undo}>
+            <Undo2 size={22} />
+          </IconButton>
+          <IconButton label="Refazer" disabled={!canRedo} onClick={redo}>
+            <Redo2 size={22} />
+          </IconButton>
           {selectedFlowNodeId && (
             <>
               <IconButton label="Duplicar" onClick={() => duplicateFlowNode(selectedFlowNodeId)}>
@@ -770,7 +847,9 @@ export function EditorPage() {
       {board === 'layout' && libraryOpen && (
         <>
           <BottomSheet title="Biblioteca de objetos" onClose={() => setLibraryOpen(false)}>
-            <LibraryPanel onInsert={handleInsert} variant="grid" />
+            {/* No toque, escolher já insere no centro da viewport: um toque só, sem segundo
+                passo de posicionamento. Na barra lateral (desktop) o clique arma a ferramenta. */}
+            <LibraryPanel onPick={handleInsert} variant="grid" />
           </BottomSheet>
           <div className="fixed inset-0 z-30 hidden md:block lg:hidden">
             <button
@@ -789,7 +868,7 @@ export function EditorPage() {
                 </button>
               </PanelHeader>
               <div className="flex min-h-0 flex-1 flex-col p-3">
-                <LibraryPanel onInsert={handleInsert} />
+                <LibraryPanel onPick={handleInsert} />
               </div>
             </div>
           </div>
@@ -851,6 +930,14 @@ export function EditorPage() {
         <div className="md:hidden">
           <BottomSheet title="Métricas" onClose={() => setMetricsOpen(false)}>
             <MetricsPanel />
+          </BottomSheet>
+        </div>
+      )}
+
+      {board === 'layout' && analysisOpen && (
+        <div className="md:hidden">
+          <BottomSheet title="Análise" onClose={() => setAnalysisOpen(false)}>
+            <IntelligencePanel active />
           </BottomSheet>
         </div>
       )}

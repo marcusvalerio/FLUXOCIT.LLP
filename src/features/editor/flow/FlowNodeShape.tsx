@@ -8,6 +8,8 @@ interface FlowNodeShapeProps {
   linked: boolean
   editing: boolean
   onSelect: (id: string) => void
+  /** Início do arraste — usado para registrar a posição de origem no histórico. */
+  onDragStart?: (id: string, x: number, y: number) => void
   onDragMove: (id: string, x: number, y: number) => void
   onDragEnd: (id: string, x: number, y: number) => void
   onHandleDragStart: (id: string, x: number, y: number) => void
@@ -28,6 +30,7 @@ export function FlowNodeShape({
   linked,
   editing,
   onSelect,
+  onDragStart,
   onDragMove,
   onDragEnd,
   onHandleDragStart,
@@ -45,6 +48,7 @@ export function FlowNodeShape({
       x={node.x}
       y={node.y}
       draggable
+      onDragStart={(e) => onDragStart?.(node.id, e.target.x(), e.target.y())}
       onDragMove={(e) => onDragMove(node.id, e.target.x(), e.target.y())}
       onDragEnd={(e) => onDragEnd(node.id, e.target.x(), e.target.y())}
       onClick={() => onSelect(node.id)}

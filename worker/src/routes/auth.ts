@@ -39,9 +39,9 @@ authRoutes.post('/signup', async (c) => {
 
   await getEmailSender(c.env).send({
     to: email,
-    subject: 'Sua senha de acesso ao FluxoCit',
+    subject: 'Sua senha de acesso ao ARGUS.LLP',
     text: [
-      'Sua conta no FluxoCit foi criada.',
+      'Sua conta no ARGUS.LLP foi criada.',
       '',
       `Senha temporária: ${tempPassword}`,
       '',
@@ -129,9 +129,9 @@ authRoutes.post('/forgot-password', async (c) => {
   const resetUrl = `${c.env.FRONTEND_ORIGIN}/reset-password?token=${token}`
   await getEmailSender(c.env).send({
     to: user.email,
-    subject: 'Redefinição de senha — FluxoCit',
+    subject: 'Redefinição de senha — ARGUS.LLP',
     text: [
-      'Recebemos um pedido para redefinir sua senha no FluxoCit.',
+      'Recebemos um pedido para redefinir sua senha no ARGUS.LLP.',
       '',
       `Acesse o link abaixo para escolher uma nova senha (válido por 1 hora):`,
       resetUrl,

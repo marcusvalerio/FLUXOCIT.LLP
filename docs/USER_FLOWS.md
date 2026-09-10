@@ -1,8 +1,8 @@
-# FluxoCit — Fluxos de Usuário
+# ARGUS.LLP — Fluxos de Usuário
 
 ## 0. Entrada (versão atual — Fase 10, sem conta)
 
-1. Usuário abre o FluxoCit → cai direto em `/projects` (lista de
+1. Usuário abre o ARGUS.LLP → cai direto em `/projects` (lista de
    projetos deste dispositivo). Não há login, cadastro nem sessão.
 2. "Novo projeto" → nome, descrição e dimensões do ambiente → o projeto
    é criado localmente e o editor abre em `/editor/:layoutId`.
@@ -15,7 +15,7 @@
 
 ## 1. Cadastro e login (Fase 9 — fora do fluxo na versão atual)
 
-1. Usuário acessa o FluxoCit sem sessão ativa → pode navegar como
+1. Usuário acessa o ARGUS.LLP sem sessão ativa → pode navegar como
    visitante (persistência local) ou ir para a tela de login.
 2. Usuário sem conta escolhe "Criar conta" → informa apenas o e-mail →
    conta criada com uma **senha temporária gerada pelo sistema**,

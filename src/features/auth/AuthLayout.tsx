@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2 } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { BrandMark } from '../../shared/ui/BrandMark'
 import { ThemeToggle } from '../../shared/ui/ThemeToggle'
 
 interface AuthLayoutProps {
@@ -14,7 +15,12 @@ export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
   return (
     <div className="min-h-dvh bg-bg flex flex-col">
       <header className="flex items-center justify-between px-4 py-4">
-        <h1 className="font-display text-lg font-semibold text-text-primary">FluxoCit</h1>
+        <div className="flex items-center gap-2">
+          <BrandMark size={24} title={null} className="text-text-primary" />
+          <h1 className="font-display text-lg font-semibold text-text-primary">
+            ARGUS<span className="text-primary">.LLP</span>
+          </h1>
+        </div>
         <ThemeToggle />
       </header>
       <main className="flex-1 flex items-center justify-center px-4 pb-16">

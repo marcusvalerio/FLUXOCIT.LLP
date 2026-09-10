@@ -48,6 +48,8 @@ export function FlowCanvas({ registerHandle }: FlowCanvasProps) {
   const panActiveRef = useRef(false)
   const panLastScreenRef = useRef<{ x: number; y: number } | null>(null)
   const singleTouchPan = useRef<{ x: number; y: number } | null>(null)
+  /** Posição do nó no início do arraste — o que o undo precisa restaurar. */
+  const dragOriginRef = useRef<{ id: string; x: number; y: number } | null>(null)
   const lastPinchDistance = useRef<number | null>(null)
   const lastPinchCenter = useRef<{ x: number; y: number } | null>(null)
 
@@ -389,8 +391,15 @@ export function FlowCanvas({ registerHandle }: FlowCanvasProps) {
                 linked={Boolean(node.linkedObjectId)}
                 editing={editingNodeId === node.id}
                 onSelect={selectFlowNode}
+                onDragStart={(id, x, y) => {
+                  dragOriginRef.current = { id, x, y }
+                }}
                 onDragMove={moveFlowNodeLive}
-                onDragEnd={commitFlowNodePosition}
+                onDragEnd={(id, x, y) => {
+                  const origin = dragOriginRef.current
+                  commitFlowNodePosition(id, x, y, origin?.id === id ? { x: origin.x, y: origin.y } : undefined)
+                  dragOriginRef.current = null
+                }}
                 onHandleDragStart={(id) => setPendingConnectionFrom(id)}
                 onStartEdit={startEditingNode}
                 registerRef={(id, n) => {

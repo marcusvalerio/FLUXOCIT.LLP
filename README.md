@@ -1,4 +1,25 @@
-# FluxoCit
+# ARGUS.LLP — Logistics Planning & Intelligence
+
+> Antes chamado FluxoCit.LLP. Mesmo produto, mesmo repositório, mesmo
+> histórico — o nome mudou junto com o posicionamento: de "ferramenta
+> para desenhar um galpão" para **plataforma que planeja o espaço e
+> entende a operação que acontece nele**.
+
+O ARGUS.LLP é organizado em camadas:
+
+```
+LAYOUT 2D        planejamento espacial (o núcleo, hoje)
+    ↓
+FLOW             modelo operacional
+    ↓
+INTELLIGENCE     análise e alertas sobre layout + fluxo
+    ↓
+SIMULATION       simulação operacional (camada futura, separada do editor 2D)
+```
+
+O planejamento é e continua **100% 2D**: a futura simulação será uma
+camada independente de visualização, nunca uma conversão do editor em
+um editor 3D.
 
 Ferramenta de planejamento logístico em **2D**, organizada em torno de
 **LAYOUT + FLUXO**: a Prancheta de Layout responde "onde cada coisa
@@ -174,6 +195,24 @@ npm run lint      # lint (oxlint)
       movimentação de objetos, drag & drop da biblioteca para o ponto
       solto, etiqueta de dimensões na seleção e camada de motion curta
       com `prefers-reduced-motion` respeitado
+
+- [x] Fase 12 — ARGUS.LLP: renomeação e posicionamento do produto (marca
+      própria, camadas Layout → Flow → Intelligence → Simulation), sistema
+      de ferramentas do editor (selecionar, mover prancheta, parede, área,
+      medir, inserir objeto, com atalhos e faixa de contexto), seleção em
+      área correta para objetos rotacionados, alças a partir das capacidades
+      declaradas por tipo, histórico único de projeto cobrindo Layout **e**
+      Fluxo, e autenticação da aplicação por modo (local sem conta /
+      multiusuário contra Worker + D1) com ownership verificado no servidor
+
+- [x] Fase 13 — Snapping avançado (extremidade, eixo e centro ao desenhar;
+      alvos logísticos ao arrastar), Flow com metadata operacional
+      (capacidade e tempo por tipo de etapa), camada de Intelligence
+      determinística e explicável (regras de layout, fluxo e integração com
+      recomendação), métricas derivadas do modelo operacional, Object
+      Registry com papéis logísticos e limites de dimensão, e auditoria de
+      autenticação/ownership validada ponta a ponta contra Worker + D1
+      locais
 
 Fora do escopo até aqui (aguardando instrução): editor 3D, times/
 organizações compartilhadas, deploy automático (CI/CD). O frontend

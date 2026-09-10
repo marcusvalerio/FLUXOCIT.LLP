@@ -9,7 +9,7 @@ import {
   saveProjectFlow,
   saveProjectLayout,
 } from '../db'
-import { readJsonBody } from '../http'
+import { isArrayBody, readJsonBody, readNumber, readString } from '../http'
 import { requireAuth } from '../middleware'
 import type { Env, ProjectRow, SessionUser } from '../types'
 
@@ -47,13 +47,14 @@ projectRoutes.get('/', async (c) => {
 })
 
 projectRoutes.post('/', async (c) => {
-  const body = await readJsonBody<{ name?: string; description?: string; widthM?: number; heightM?: number }>(c)
-  const name = body.name?.trim() || 'Novo projeto'
+  // O corpo é JSON arbitrário: cada campo é lido pelo tipo esperado. Nome ausente ou vazio cai
+  // no padrão de propósito (criar projeto não deve exigir batismo); tipo errado não derruba nada.
+  const body = await readJsonBody<Record<string, unknown>>(c)
   const row = await createProject(c.env, c.get('user').id, {
-    name,
-    description: body.description?.trim() || undefined,
-    widthM: body.widthM,
-    heightM: body.heightM,
+    name: readString(body.name) ?? 'Novo projeto',
+    description: readString(body.description),
+    widthM: readNumber(body.widthM),
+    heightM: readNumber(body.heightM),
   })
   return c.json({ project: toFull(row) }, 201)
 })
@@ -67,8 +68,8 @@ projectRoutes.get('/:id', async (c) => {
 projectRoutes.patch('/:id', async (c) => {
   const userId = c.get('user').id
   const id = c.req.param('id')
-  const body = await readJsonBody<{ name?: string }>(c)
-  const name = body.name?.trim()
+  const body = await readJsonBody<Record<string, unknown>>(c)
+  const name = readString(body.name)
   if (!name) return c.json({ error: 'Nome não pode ser vazio.' }, 400)
 
   const ok = await renameProject(c.env, id, userId, name)
@@ -93,22 +94,16 @@ projectRoutes.post('/:id/duplicate', async (c) => {
 projectRoutes.put('/:id/layout', async (c) => {
   const userId = c.get('user').id
   const id = c.req.param('id')
-  const body = await readJsonBody<{
-    objects?: unknown[]
-    widthM?: number
-    heightM?: number
-    scalePxPerMeter?: number
-    gridStepM?: number
-  }>(c)
-  if (!Array.isArray(body.objects)) {
+  const body = await readJsonBody<Record<string, unknown>>(c)
+  if (!isArrayBody(body.objects)) {
     return c.json({ error: 'Corpo inválido: objects deve ser uma lista.' }, 400)
   }
   const ok = await saveProjectLayout(c.env, id, userId, {
     objects: body.objects,
-    widthM: body.widthM,
-    heightM: body.heightM,
-    scalePxPerMeter: body.scalePxPerMeter,
-    gridStepM: body.gridStepM,
+    widthM: readNumber(body.widthM),
+    heightM: readNumber(body.heightM),
+    scalePxPerMeter: readNumber(body.scalePxPerMeter),
+    gridStepM: readNumber(body.gridStepM),
   })
   if (!ok) return c.json({ error: 'Projeto não encontrado.' }, 404)
   return c.body(null, 204)
@@ -117,8 +112,8 @@ projectRoutes.put('/:id/layout', async (c) => {
 projectRoutes.put('/:id/flow', async (c) => {
   const userId = c.get('user').id
   const id = c.req.param('id')
-  const body = await readJsonBody<{ flowNodes?: unknown[]; flowConnections?: unknown[] }>(c)
-  if (!Array.isArray(body.flowNodes) || !Array.isArray(body.flowConnections)) {
+  const body = await readJsonBody<Record<string, unknown>>(c)
+  if (!isArrayBody(body.flowNodes) || !isArrayBody(body.flowConnections)) {
     return c.json({ error: 'Corpo inválido: flowNodes/flowConnections devem ser listas.' }, 400)
   }
   const ok = await saveProjectFlow(c.env, id, userId, body.flowNodes, body.flowConnections)

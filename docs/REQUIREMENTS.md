@@ -1,4 +1,4 @@
-# FluxoCit — Requisitos
+# ARGUS.LLP — Requisitos
 
 Convenção: cada requisito tem um ID (`RF` = requisito funcional, `RNF` =
 requisito não funcional), prioridade (`MVP`, `P1`, `P2`, `Futuro`) e

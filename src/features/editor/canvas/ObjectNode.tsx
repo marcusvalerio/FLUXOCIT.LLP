@@ -6,6 +6,7 @@ import { useEditorStore } from '../state/useEditorStore'
 import { cmToPx, pxToCm } from '../../../shared/lib/units'
 import { getBoundingBox, snapToGrid } from '../../../shared/lib/geometry'
 import { resolveObjectSnap } from '../../../shared/lib/snap'
+import { getLogisticsSnapLines } from '../objects/logisticsSnap'
 import type { BoundsStatus } from '../../../shared/lib/spatialRules'
 import type { LayoutObject } from '../../../types/layout'
 import type { SnapGuides } from './GuideLines'
@@ -160,7 +161,13 @@ export function ObjectNode({
       // common intentional placement (see docs/BUSINESS_RULES.md § Ambiente).
       otherBoxes.push({ minX: 0, minY: 0, maxX: envWidthM * 100, maxY: envHeightM * 100 })
       const thresholdCm = pxToCm(SNAP_THRESHOLD_SCREEN_PX / zoom, pxPerMeter)
-      const snapResult = resolveObjectSnap(anchorBox, otherBoxes, thresholdCm)
+      // Snap logístico: alvos que existem pelo significado do objeto (carga unitizada assenta na
+      // estrutura de armazenagem, equipamento segue o eixo do corredor) — ver lib/logisticsSnap.
+      const logisticsLines = getLogisticsSnapLines(
+        { ...obj, x: rawAnchorX, y: rawAnchorY },
+        store.objects.filter((o) => !movingIds.has(o.id)),
+      )
+      const snapResult = resolveObjectSnap(anchorBox, otherBoxes, thresholdCm, logisticsLines)
       const stepCm = gridStepM * 100
 
       if (snapResult.x) {

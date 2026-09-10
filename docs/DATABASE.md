@@ -1,4 +1,4 @@
-# FluxoCit — Modelo de Dados
+# ARGUS.LLP — Modelo de Dados
 
 > Esquema real do **Cloudflare D1** (SQLite), definido em
 > `worker/migrations/0001_init.sql` e usado pelo Worker (`worker/src/db.ts`).

@@ -1,4 +1,4 @@
-# FluxoCit — Diretrizes de UX
+# ARGUS.LLP — Diretrizes de UX
 
 Complementa `docs/DESIGN_SYSTEM.md` (tokens visuais) e
 `docs/USER_FLOWS.md` (fluxos). Este documento foca em **como o editor
@@ -18,7 +18,7 @@ irreversíveis fora do canvas (excluir layout inteiro).
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ FluxoCit.LLP │ ← │ Projeto        [ Layout | Fluxo ]   ↶ ↷ Salvar ⋮│
+│ ARGUS.LLP │ ← │ Projeto        [ Layout | Fluxo ]   ↶ ↷ Salvar ⋮│
 │                    status de salvamento                            │
 ├────────────┬──────────────────────────────────┬──────────────────┤
 │ Biblioteca │  [+ − ⤢ ⌖]                        │ Propriedades │    │
@@ -37,7 +37,8 @@ irreversíveis fora do canvas (excluir layout inteiro).
   itens em **linhas densas** — ícone técnico (o mesmo símbolo que vai
   para a prancheta), nome e função. Nunca cards grandes.
 - **Painel direito** (288–312px, ≥768px): abas Propriedades / Ambiente /
-  Métricas. Sem seleção, Propriedades mostra um estado vazio explicativo
+  Métricas / Análise (Intelligence, com contagem por severidade e "ver na
+  prancheta"; no mobile, pelo menu de ações). Sem seleção, Propriedades mostra um estado vazio explicativo
   em vez de uma coluna em branco.
 - **Controles flutuantes** sobre a prancheta: zoom no canto superior
   esquerdo, ferramentas (selecionar, mover prancheta, grade, snap, fluxo
@@ -165,6 +166,32 @@ gesto, não a sorte de onde o cursor estava.
   superior, sem afetar o snapping).
 - Toggle de snap-to-grid acessível (ícone de ímã na barra de ações);
   estado persistido por sessão do usuário (não por layout).
+
+### 3.8.1 Ferramentas
+
+A ferramenta ativa é sempre visível (barra inferior + faixa de contexto sobre
+a prancheta, que some ao voltar para Selecionar). Atalhos: **V** selecionar,
+**H** mover prancheta, **W** parede, **A** área, **M** medir, **P** inserir
+objeto; **Esc** volta para Selecionar e desarma a inserção.
+
+Enquanto uma ferramenta de desenho está ativa os objetos deixam de ser
+arrastáveis — desenhar uma parede por cima de um rack nunca move o rack. No
+toque, um dedo desenha e dois dedos continuam sendo zoom/pan.
+
+Escolher um objeto na biblioteca (desktop) **arma** a inserção em vez de
+inserir às cegas no centro: a faixa de contexto diz o que está armado e o
+clique posiciona no ponto exato. Na gaveta de toque, escolher insere direto —
+um toque só, sem segundo passo.
+
+### 3.8.2 Feedback de encaixe
+
+Ao desenhar, o ponto que vai receber a extremidade aparece como um losango
+azul com o rótulo do que foi pego ("extremidade", "centro", "eixo"). Ao
+arrastar, as guias e a leitura de coordenadas continuam como antes. O encaixe
+na grade não recebe marcador — seria ruído constante.
+
+Com uma ferramenta de desenho ativa, as alças do objeto selecionado saem de
+cena: elas capturariam o clique de quem está tentando traçar sobre o objeto.
 
 ### 3.9 Estado vazio da prancheta
 

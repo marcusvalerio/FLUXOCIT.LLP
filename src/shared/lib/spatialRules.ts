@@ -1,5 +1,5 @@
 import { getBoundingBox } from './geometry'
-import { AREA_TYPES, CIRCULATION_TYPES } from './metrics'
+import { AREA_TYPES, CIRCULATION_TYPES, MOBILE_EQUIPMENT_TYPES } from './logisticsTypes'
 import type { LayoutObject } from '../../types/layout'
 
 /** Racks/corridors claim a fixed storage footprint — unlike walls (which meet at corners) or
@@ -106,15 +106,6 @@ export interface SpatialViolation {
   objectIds: string[]
   message: string
 }
-
-const MOBILE_EQUIPMENT_TYPES = new Set([
-  'forklift',
-  'pallet-jack',
-  'reach-truck',
-  'tug',
-  'order-picker',
-  'platform-cart',
-])
 
 /** Only rigid, impassable structure — doors/gates/docks are deliberate openings equipment must
  * pass through, so they're excluded to avoid false positives. */

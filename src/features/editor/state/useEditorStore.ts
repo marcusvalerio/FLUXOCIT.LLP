@@ -6,6 +6,7 @@ import type { Layout, LayoutObject, ObjectCategory, ObjectTypeKey } from '../../
 import type { FlowConnection, FlowConnectionType, FlowNode, FlowNodeType } from '../../../types/flow'
 import { FLOW_NODE_SIZE } from '../../../types/flow'
 import { OBJECT_CATALOG } from '../objects/catalog'
+import type { EditorToolId } from '../tools/toolRegistry'
 
 export type AlignMode = 'left' | 'right' | 'top' | 'bottom' | 'centerX' | 'centerY'
 export type DistributeAxis = 'x' | 'y'
@@ -33,10 +34,11 @@ export interface Camera {
   zoom: number
 }
 
-/** Ferramenta ativa da prancheta. 'select' é o padrão (clicar seleciona, arrastar em área vazia
- * faz marquee); 'pan' transforma o arraste com o botão esquerdo em deslocamento da prancheta,
- * para quem prefere uma ferramenta explícita ao invés de botão direito / espaço. */
-export type CanvasTool = 'select' | 'pan'
+/** Medição efêmera da ferramenta Medir — vive no editor, nunca no modelo salvo do projeto. */
+export interface Measurement {
+  start: { x: number; y: number }
+  end: { x: number; y: number }
+}
 
 interface EditorState {
   layoutId: string | null
@@ -49,7 +51,12 @@ interface EditorState {
   objects: LayoutObject[]
   selectedIds: string[]
   camera: Camera
-  canvasTool: CanvasTool
+  /** Ferramenta ativa — ver features/editor/tools/toolRegistry.ts. */
+  activeTool: EditorToolId
+  /** Tipo armado para a ferramenta "Inserir objeto": o próximo clique na prancheta o posiciona. */
+  placeObjectType: ObjectTypeKey | null
+  /** Resultado corrente da ferramenta Medir (cm, coordenadas de mundo) — não é persistido. */
+  measurement: Measurement | null
   /** True enquanto a barra de espaço estiver pressionada: o arraste vira pan temporário, então
    * os objetos param de ser arrastáveis para o gesto não fazer as duas coisas ao mesmo tempo. */
   spacePanActive: boolean
@@ -61,7 +68,9 @@ interface EditorState {
   /** Mobile: entered via long-press on an object; while true, taps toggle selection instead of replacing it. */
   multiSelectMode: boolean
   saveStatus: SaveStatus
-  history: { past: LayoutObject[][]; future: LayoutObject[][] }
+  /** Histórico de edição do projeto — Layout e Fluxo juntos, porque desfazer é uma ação do
+   * usuário sobre o projeto, não sobre a prancheta em que ele está no momento. */
+  history: { past: EditorSnapshot[]; future: EditorSnapshot[] }
 
   // --- Fluxo board (same project, separate data — see docs/ARCHITECTURE.md § Fluxo) ---
   flowNodes: FlowNode[]
@@ -74,6 +83,17 @@ interface EditorState {
   loadLayout: (layout: Layout) => void
   setEnvironmentSize: (widthM: number, heightM: number) => void
   addObject: (objectType: ObjectTypeKey, worldXCm: number, worldYCm: number) => void
+  /** Cria um objeto com geometria explícita (ferramentas Parede/Área) — mesma entrada de
+   * histórico e mesma seleção resultante de qualquer outra criação. Devolve o id criado. */
+  createObject: (input: {
+    objectType: ObjectTypeKey
+    x: number
+    y: number
+    width?: number
+    length?: number
+    rotationDeg?: number
+    properties?: Record<string, unknown>
+  }) => string
   moveObjectLive: (id: string, xCm: number, yCm: number) => void
   commitObject: (id: string, patch: Partial<LayoutObject>) => void
   setProperty: (id: string, key: string, value: unknown) => void
@@ -104,7 +124,10 @@ interface EditorState {
   undo: () => void
   redo: () => void
   setCamera: (camera: Partial<Camera>) => void
-  setCanvasTool: (tool: CanvasTool) => void
+  setActiveTool: (tool: EditorToolId) => void
+  /** Arma um tipo de objeto e ativa a ferramenta de inserção; `null` desarma e volta a Selecionar. */
+  armPlaceObject: (objectType: ObjectTypeKey | null) => void
+  setMeasurement: (measurement: Measurement | null) => void
   setSpacePanActive: (active: boolean) => void
   setSnapEnabled: (enabled: boolean) => void
   toggleGrid: () => void
@@ -114,7 +137,14 @@ interface EditorState {
 
   addFlowNode: (type: FlowNodeType, x: number, y: number) => void
   moveFlowNodeLive: (id: string, x: number, y: number) => void
-  commitFlowNodePosition: (id: string, x: number, y: number) => void
+  /** Fim do arraste de um nó. `origin` é a posição de antes do gesto, para o undo voltar ao
+   * lugar certo (durante o arraste moveFlowNodeLive não registra histórico). */
+  commitFlowNodePosition: (
+    id: string,
+    x: number,
+    y: number,
+    origin?: { x: number; y: number },
+  ) => void
   setFlowNodeProperty: (id: string, key: string, value: unknown) => void
   selectFlowNode: (id: string | null) => void
   deleteFlowNode: (id: string) => void
@@ -127,8 +157,28 @@ interface EditorState {
   setPendingConnectionFrom: (id: string | null) => void
 }
 
-function snapshot(objects: LayoutObject[]): LayoutObject[] {
+/** Estado editável de um projeto num instante — a unidade do undo/redo. */
+export interface EditorSnapshot {
+  objects: LayoutObject[]
+  flowNodes: FlowNode[]
+  flowConnections: FlowConnection[]
+}
+
+function cloneObjects(objects: LayoutObject[]): LayoutObject[] {
   return objects.map((o) => ({ ...o, properties: { ...o.properties } }))
+}
+
+/** Fotografia do estado atual para o histórico. `objects` pode vir sobrescrito por quem já
+ * calculou o estado "de antes" (fim de arraste, por exemplo). */
+function snapshot(
+  state: { objects: LayoutObject[]; flowNodes: FlowNode[]; flowConnections: FlowConnection[] },
+  objectsOverride?: LayoutObject[],
+): EditorSnapshot {
+  return {
+    objects: cloneObjects(objectsOverride ?? state.objects),
+    flowNodes: state.flowNodes.map((n) => ({ ...n })),
+    flowConnections: state.flowConnections.map((c) => ({ ...c })),
+  }
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -141,7 +191,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   objects: [],
   selectedIds: [],
   camera: { x: 0, y: 0, zoom: 1 },
-  canvasTool: 'select',
+  activeTool: 'select',
+  placeObjectType: null,
+  measurement: null,
   spacePanActive: false,
   snapEnabled: true,
   gridVisible: true,
@@ -181,12 +233,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       envHeightM: Math.max(1, heightM),
     }),
 
-  addObject: (objectType, worldXCm, worldYCm) => {
+  /** Criação canônica: toda inserção de objeto passa por aqui (biblioteca, ferramentas de
+   * desenho, drag & drop), então histórico, seleção e z-order têm sempre o mesmo comportamento. */
+  createObject: ({ objectType, x, y, width, length, rotationDeg, properties }) => {
     const def = OBJECT_CATALOG[objectType]
-    const { objects, history, gridStepM, snapEnabled } = get()
-    const stepCm = gridStepM * 100
-    const x = snapEnabled ? snapToGrid(worldXCm - def.defaultWidth / 2, stepCm) : worldXCm - def.defaultWidth / 2
-    const y = snapEnabled ? snapToGrid(worldYCm - def.defaultLength / 2, stepCm) : worldYCm - def.defaultLength / 2
+    const { objects, history } = get()
 
     const newObject: LayoutObject = {
       id: createId(),
@@ -194,17 +245,32 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       category: def.category,
       x,
       y,
-      width: def.defaultWidth,
-      length: def.defaultLength,
-      rotationDeg: 0,
+      width: width ?? def.defaultWidth,
+      length: length ?? def.defaultLength,
+      rotationDeg: rotationDeg ?? 0,
       zIndex: insertZIndex(objects, def.category),
-      properties: { ...(def.defaultProperties ?? {}) },
+      properties: { ...(def.defaultProperties ?? {}), ...(properties ?? {}) },
     }
 
     set({
       objects: [...objects, newObject],
       selectedIds: [newObject.id],
-      history: { past: [...history.past, snapshot(objects)].slice(-MAX_HISTORY), future: [] },
+      history: { past: [...history.past, snapshot(get())].slice(-MAX_HISTORY), future: [] },
+    })
+    return newObject.id
+  },
+
+  addObject: (objectType, worldXCm, worldYCm) => {
+    const def = OBJECT_CATALOG[objectType]
+    const { gridStepM, snapEnabled } = get()
+    const stepCm = gridStepM * 100
+    const rawX = worldXCm - def.defaultWidth / 2
+    const rawY = worldYCm - def.defaultLength / 2
+
+    get().createObject({
+      objectType,
+      x: snapEnabled ? snapToGrid(rawX, stepCm) : rawX,
+      y: snapEnabled ? snapToGrid(rawY, stepCm) : rawY,
     })
   },
 
@@ -218,7 +284,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   /** Commits a change (drag end, property edit, etc.) and records undo history. */
   commitObject: (id, patch) => {
     const { objects, history } = get()
-    const before = snapshot(objects)
+    const before = snapshot(get())
     set({
       objects: objects.map((o) => (o.id === id ? { ...o, ...patch } : o)),
       history: { past: [...history.past, before].slice(-MAX_HISTORY), future: [] },
@@ -263,7 +329,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set({
       objects: objects.filter((o) => o.id !== id),
       selectedIds: selectedIds.filter((s) => s !== id),
-      history: { past: [...history.past, snapshot(objects)].slice(-MAX_HISTORY), future: [] },
+      history: { past: [...history.past, snapshot(get())].slice(-MAX_HISTORY), future: [] },
     })
   },
 
@@ -282,7 +348,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set({
       objects: [...objects, copy],
       selectedIds: [copy.id],
-      history: { past: [...history.past, snapshot(objects)].slice(-MAX_HISTORY), future: [] },
+      history: { past: [...history.past, snapshot(get())].slice(-MAX_HISTORY), future: [] },
     })
   },
 
@@ -299,7 +365,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set({
       objects: objects.filter((o) => !ids.has(o.id)),
       selectedIds: [],
-      history: { past: [...history.past, snapshot(objects)].slice(-MAX_HISTORY), future: [] },
+      history: { past: [...history.past, snapshot(get())].slice(-MAX_HISTORY), future: [] },
     })
   },
 
@@ -324,7 +390,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set({
       objects: [...objects, ...copies],
       selectedIds: copies.map((c) => c.id),
-      history: { past: [...history.past, snapshot(objects)].slice(-MAX_HISTORY), future: [] },
+      history: { past: [...history.past, snapshot(get())].slice(-MAX_HISTORY), future: [] },
     })
   },
 
@@ -336,7 +402,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       objects: objects.map((o) =>
         ids.has(o.id) ? { ...o, rotationDeg: normalizeDeg(o.rotationDeg + deltaDeg) } : o,
       ),
-      history: { past: [...history.past, snapshot(objects)].slice(-MAX_HISTORY), future: [] },
+      history: { past: [...history.past, snapshot(get())].slice(-MAX_HISTORY), future: [] },
     })
   },
 
@@ -350,7 +416,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const reordered = [...rest, ...selected].map((o, i) => ({ ...o, zIndex: i }))
     set({
       objects: reordered,
-      history: { past: [...history.past, snapshot(objects)].slice(-MAX_HISTORY), future: [] },
+      history: { past: [...history.past, snapshot(get())].slice(-MAX_HISTORY), future: [] },
     })
   },
 
@@ -364,7 +430,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const reordered = [...selected, ...rest].map((o, i) => ({ ...o, zIndex: i }))
     set({
       objects: reordered,
-      history: { past: [...history.past, snapshot(objects)].slice(-MAX_HISTORY), future: [] },
+      history: { past: [...history.past, snapshot(get())].slice(-MAX_HISTORY), future: [] },
     })
   },
 
@@ -385,7 +451,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
     set({
       objects: order.map((o, i) => ({ ...o, zIndex: i })),
-      history: { past: [...history.past, snapshot(objects)].slice(-MAX_HISTORY), future: [] },
+      history: { past: [...history.past, snapshot(get())].slice(-MAX_HISTORY), future: [] },
     })
   },
 
@@ -404,7 +470,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
     set({
       objects: order.map((o, i) => ({ ...o, zIndex: i })),
-      history: { past: [...history.past, snapshot(objects)].slice(-MAX_HISTORY), future: [] },
+      history: { past: [...history.past, snapshot(get())].slice(-MAX_HISTORY), future: [] },
     })
   },
 
@@ -422,7 +488,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   /** Commits several changes (multi-drag end, align, distribute) as a single undo step. */
   commitMany: (updates) => {
     const { objects, history } = get()
-    const before = snapshot(objects)
+    const before = snapshot(get())
     const byId = new Map(updates.map((u) => [u.id, u.patch]))
     set({
       objects: objects.map((o) => {
@@ -444,6 +510,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const originById = new Map(origin.map((u) => [u.id, u]))
     const finalById = new Map(final.map((u) => [u.id, u]))
     const before = snapshot(
+      get(),
       objects.map((o) => {
         const u = originById.get(o.id)
         return u ? { ...o, x: u.x, y: u.y } : o
@@ -534,35 +601,59 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   undo: () => {
-    const { history, objects } = get()
+    const { history } = get()
     const previous = history.past.at(-1)
     if (!previous) return
     set({
-      objects: previous,
+      objects: previous.objects,
+      flowNodes: previous.flowNodes,
+      flowConnections: previous.flowConnections,
       history: {
         past: history.past.slice(0, -1),
-        future: [snapshot(objects), ...history.future].slice(0, MAX_HISTORY),
+        future: [snapshot(get()), ...history.future].slice(0, MAX_HISTORY),
       },
       selectedIds: [],
+      selectedFlowNodeId: null,
+      selectedFlowConnectionId: null,
     })
   },
 
   redo: () => {
-    const { history, objects } = get()
+    const { history } = get()
     const next = history.future[0]
     if (!next) return
     set({
-      objects: next,
+      objects: next.objects,
+      flowNodes: next.flowNodes,
+      flowConnections: next.flowConnections,
       history: {
-        past: [...history.past, snapshot(objects)].slice(-MAX_HISTORY),
+        past: [...history.past, snapshot(get())].slice(-MAX_HISTORY),
         future: history.future.slice(1),
       },
       selectedIds: [],
+      selectedFlowNodeId: null,
+      selectedFlowConnectionId: null,
     })
   },
 
   setCamera: (camera) => set({ camera: { ...get().camera, ...camera } }),
-  setCanvasTool: (tool) => set({ canvasTool: tool }),
+  setActiveTool: (tool) => {
+    // Trocar de ferramenta limpa o que pertencia à anterior: o tipo armado da inserção e a
+    // medição na tela. Sem isso o editor guarda estado invisível de uma ferramenta inativa.
+    set({
+      activeTool: tool,
+      placeObjectType: tool === 'place' ? get().placeObjectType : null,
+      measurement: tool === 'measure' ? get().measurement : null,
+    })
+  },
+
+  armPlaceObject: (objectType) =>
+    set({
+      placeObjectType: objectType,
+      activeTool: objectType ? 'place' : 'select',
+    }),
+
+  setMeasurement: (measurement) => set({ measurement }),
   setSpacePanActive: (active) => {
     if (get().spacePanActive !== active) set({ spacePanActive: active })
   },
@@ -572,11 +663,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setMultiSelectMode: (enabled) => set({ multiSelectMode: enabled }),
   toggleFlowOverlay: () => set({ flowOverlayVisible: !get().flowOverlayVisible }),
 
-  // --- Fluxo board — no undo history (not required by product scope); every mutation commits
-  // straight to state, mirroring the simpler "diagram" nature of this board vs. the spatial one. ---
+  // --- Prancheta de Fluxo. Toda mutação confirmada entra no MESMO histórico do Layout: desfazer
+  // é uma ação sobre o projeto, e o usuário que acabou de apagar uma etapa por engano espera
+  // Ctrl+Z, esteja ele em qual prancheta estiver. Só o arraste ao vivo (moveFlowNodeLive) fica
+  // fora, como no Layout — quem registra a entrada de histórico é o commit do fim do gesto. ---
 
   addFlowNode: (type, x, y) => {
-    const { flowNodes } = get()
+    const { flowNodes, history } = get()
+    const before = snapshot(get())
     // Successive inserts land at the same requested point (the view center) — cascade each one
     // a bit further down/right so a quick run of "add step" taps reads as a list, not a stack of
     // perfectly overlapping boxes.
@@ -591,6 +685,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       flowNodes: [...flowNodes, newNode],
       selectedFlowNodeId: newNode.id,
       selectedFlowConnectionId: null,
+      history: { past: [...history.past, before].slice(-MAX_HISTORY), future: [] },
     })
   },
 
@@ -598,31 +693,55 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set({ flowNodes: get().flowNodes.map((n) => (n.id === id ? { ...n, x, y } : n)) })
   },
 
-  commitFlowNodePosition: (id, x, y) => {
-    set({ flowNodes: get().flowNodes.map((n) => (n.id === id ? { ...n, x, y } : n)) })
+  commitFlowNodePosition: (id, x, y, origin) => {
+    const { history } = get()
+    // Igual ao Layout: durante o arraste moveFlowNodeLive já moveu o nó sem histórico, então o
+    // "antes" precisa ser a posição de origem do gesto — senão desfazer não devolve nada.
+    const before = origin
+      ? snapshot({
+          ...get(),
+          flowNodes: get().flowNodes.map((n) => (n.id === id ? { ...n, x: origin.x, y: origin.y } : n)),
+        })
+      : snapshot(get())
+    set({
+      flowNodes: get().flowNodes.map((n) => (n.id === id ? { ...n, x, y } : n)),
+      history: { past: [...history.past, before].slice(-MAX_HISTORY), future: [] },
+    })
   },
 
   setFlowNodeProperty: (id, key, value) => {
+    const { history } = get()
+    const before = snapshot(get())
     set({
       flowNodes: get().flowNodes.map((n) => (n.id === id ? { ...n, [key]: value } : n)),
+      history: { past: [...history.past, before].slice(-MAX_HISTORY), future: [] },
     })
   },
 
   selectFlowNode: (id) => set({ selectedFlowNodeId: id, selectedFlowConnectionId: id ? null : get().selectedFlowConnectionId }),
 
   deleteFlowNode: (id) => {
+    const { history } = get()
+    const before = snapshot(get())
     set({
       flowNodes: get().flowNodes.filter((n) => n.id !== id),
       flowConnections: get().flowConnections.filter((c) => c.fromNodeId !== id && c.toNodeId !== id),
       selectedFlowNodeId: get().selectedFlowNodeId === id ? null : get().selectedFlowNodeId,
+      history: { past: [...history.past, before].slice(-MAX_HISTORY), future: [] },
     })
   },
 
   duplicateFlowNode: (id) => {
     const original = get().flowNodes.find((n) => n.id === id)
     if (!original) return
+    const { history } = get()
+    const before = snapshot(get())
     const copy: FlowNode = { ...original, id: createId(), x: original.x + 24, y: original.y + 24 }
-    set({ flowNodes: [...get().flowNodes, copy], selectedFlowNodeId: copy.id })
+    set({
+      flowNodes: [...get().flowNodes, copy],
+      selectedFlowNodeId: copy.id,
+      history: { past: [...history.past, before].slice(-MAX_HISTORY), future: [] },
+    })
   },
 
   addFlowConnection: (fromId, toId, flowType) => {
@@ -630,20 +749,33 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const { flowConnections } = get()
     const alreadyExists = flowConnections.some((c) => c.fromNodeId === fromId && c.toNodeId === toId)
     if (alreadyExists) return
+    const { history } = get()
+    const before = snapshot(get())
     const newConnection: FlowConnection = { id: createId(), fromNodeId: fromId, toNodeId: toId, flowType }
-    set({ flowConnections: [...flowConnections, newConnection], selectedFlowConnectionId: newConnection.id, selectedFlowNodeId: null })
+    set({
+      flowConnections: [...flowConnections, newConnection],
+      selectedFlowConnectionId: newConnection.id,
+      selectedFlowNodeId: null,
+      history: { past: [...history.past, before].slice(-MAX_HISTORY), future: [] },
+    })
   },
 
   selectFlowConnection: (id) => set({ selectedFlowConnectionId: id, selectedFlowNodeId: id ? null : get().selectedFlowNodeId }),
 
   setFlowConnectionProperty: (id, key, value) => {
+    const { history } = get()
+    const before = snapshot(get())
     set({
       flowConnections: get().flowConnections.map((c) => (c.id === id ? { ...c, [key]: value } : c)),
+      history: { past: [...history.past, before].slice(-MAX_HISTORY), future: [] },
     })
   },
 
   reverseFlowConnection: (id) => {
+    const { history } = get()
+    const before = snapshot(get())
     set({
+      history: { past: [...history.past, before].slice(-MAX_HISTORY), future: [] },
       flowConnections: get().flowConnections.map((c) =>
         c.id === id ? { ...c, fromNodeId: c.toNodeId, toNodeId: c.fromNodeId } : c,
       ),
@@ -651,9 +783,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   deleteFlowConnection: (id) => {
+    const { history } = get()
+    const before = snapshot(get())
     set({
       flowConnections: get().flowConnections.filter((c) => c.id !== id),
       selectedFlowConnectionId: get().selectedFlowConnectionId === id ? null : get().selectedFlowConnectionId,
+      history: { past: [...history.past, before].slice(-MAX_HISTORY), future: [] },
     })
   },
 
