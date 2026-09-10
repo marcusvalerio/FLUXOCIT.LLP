@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { getLogisticsSnapLines } from './logisticsSnap'
-import { resolveObjectSnap } from './snap'
-import { getBoundingBox } from './geometry'
-import type { LayoutObject, ObjectCategory, ObjectTypeKey } from '../../types/layout'
+import { resolveObjectSnap } from '../../../shared/lib/snap'
+import { getBoundingBox } from '../../../shared/lib/geometry'
+import type { LayoutObject, ObjectCategory, ObjectTypeKey } from '../../../types/layout'
 
 function obj(
   objectType: ObjectTypeKey,

@@ -1,4 +1,5 @@
 import { OBJECT_CATALOG } from './catalog'
+import { LINEAR_TYPES } from './roles'
 import type { ObjectTypeKey } from '../../../types/layout'
 
 /**
@@ -20,19 +21,6 @@ export interface ObjectCapabilities {
   resize: ResizeMode
   rotate: boolean
 }
-
-/**
- * Elementos lineares: têm um eixo (comprimento) e uma espessura que é característica do tipo.
- * Isso governa duas coisas — o gesto útil é alongar, nunca engrossar por acidente, e o encaixe
- * relevante é pelas extremidades e pelo eixo (ver tools/pointSnapping).
- */
-export const LINEAR_TYPES: ReadonlySet<ObjectTypeKey> = new Set<ObjectTypeKey>([
-  'wall',
-  'corridor',
-  'traffic-lane',
-  'pedestrian-lane',
-  'flow-route',
-])
 
 export function getObjectCapabilities(objectType: ObjectTypeKey): ObjectCapabilities {
   const def = OBJECT_CATALOG[objectType]

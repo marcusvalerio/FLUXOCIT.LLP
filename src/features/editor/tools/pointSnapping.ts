@@ -1,5 +1,5 @@
 import { getCorners, snapToGrid } from '../../../shared/lib/geometry'
-import { LINEAR_TYPES } from '../objects/capabilities'
+import { LINEAR_TYPES } from '../objects/roles'
 import type { LayoutObject } from '../../../types/layout'
 import type { PointCm } from './draftGeometry'
 

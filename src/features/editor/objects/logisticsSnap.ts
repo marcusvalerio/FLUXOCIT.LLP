@@ -1,5 +1,6 @@
-import { getBoundingBox } from './geometry'
-import type { LayoutObject, ObjectTypeKey } from '../../types/layout'
+import { getBoundingBox } from '../../../shared/lib/geometry'
+import { CIRCULATION_TYPES, MOBILE_EQUIPMENT_TYPES, STORAGE_TYPES, UNIT_LOAD_TYPES } from './roles'
+import type { LayoutObject } from '../../../types/layout'
 
 /**
  * Snap logístico: alvos de encaixe que só fazem sentido pelo **significado** do objeto, não pela
@@ -14,43 +15,6 @@ import type { LayoutObject, ObjectTypeKey } from '../../types/layout'
  * (`resolveObjectSnap`): assim o feedback visual, o limiar e a prioridade continuam sendo os
  * mesmos, sem um segundo sistema de encaixe paralelo.
  */
-
-/** Cargas unitizadas: o que se guarda numa posição de armazenagem. */
-const UNIT_LOAD_TYPES: ReadonlySet<ObjectTypeKey> = new Set<ObjectTypeKey>([
-  'pallet',
-  'box',
-  'container',
-  'cage-pallet',
-])
-
-/** Estruturas que recebem carga unitizada. */
-const STORAGE_TYPES: ReadonlySet<ObjectTypeKey> = new Set<ObjectTypeKey>([
-  'rack',
-  'shelf',
-  'storage-block',
-  'drive-in',
-  'push-back',
-  'flow-rack',
-  'cantilever',
-])
-
-/** Equipamentos que circulam — e portanto seguem o eixo de um corredor. */
-const MOBILE_EQUIPMENT_TYPES: ReadonlySet<ObjectTypeKey> = new Set<ObjectTypeKey>([
-  'forklift',
-  'reach-truck',
-  'pallet-jack',
-  'order-picker',
-  'tug',
-  'platform-cart',
-])
-
-/** Vias de circulação, cujo eixo central guia o equipamento. */
-const CIRCULATION_TYPES: ReadonlySet<ObjectTypeKey> = new Set<ObjectTypeKey>([
-  'corridor',
-  'traffic-lane',
-  'pedestrian-lane',
-  'flow-route',
-])
 
 export interface SnapTargetLines {
   /** Posições de mundo (cm) que atraem o objeto no eixo X. */
