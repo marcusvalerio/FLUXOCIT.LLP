@@ -224,6 +224,64 @@ undo/redo um comportamento previsível: o histórico guarda o **projeto**
 desfazer é uma ação do usuário sobre o projeto, esteja ele no Layout ou no
 Fluxo.
 
+## 3.3 Object Registry
+
+`objects/catalog.ts` continua sendo a definição-mãe de cada tipo (geometria,
+desenho técnico, campos editáveis). Sobre ela, duas camadas dizem como o
+editor deve **tratar** o objeto:
+
+| Módulo | Responde |
+|--------|----------|
+| `objects/roles.ts` | Papel logístico: linear, circulação, armazenagem, carga unitizada, equipamento móvel, área, estrutura |
+| `objects/capabilities.ts` | O que o objeto permite transformar (redimensionar em dois eixos, só no comprimento, ou nada) |
+| `objects/registry.ts` | `getObjectProfile()` — a visão completa: catálogo + papel + capacidades + descrição + limites de dimensão |
+
+O papel é a fonte única do comportamento: as alças do Transformer, o snap de
+extremidade e o snap logístico consultam o mesmo conjunto. Acrescentar um
+objeto é acrescentar uma entrada no catálogo (e um papel, se ele tiver
+comportamento próprio) — o núcleo do editor não muda.
+
+## 3.4 Snapping
+
+Três camadas, todas resolvidas com o mesmo limiar (8 px de tela convertidos
+para cm, então o encaixe tem a mesma força em qualquer zoom):
+
+1. **Arraste de objeto** (`shared/lib/snap.ts`): alinha caixas por aresta,
+   centro e alinhamento entre objetos, mais os limites do ambiente.
+2. **Snap logístico** (`objects/logisticsSnap.ts`): alvos que só existem pelo
+   significado — carga unitizada assenta no centro da estrutura de
+   armazenagem, equipamento móvel segue o eixo do corredor. Entram como
+   linhas-alvo no mesmo resolvedor; vence quem estiver mais perto.
+3. **Desenho** (`tools/pointSnapping.ts`): encaixe de **pontos**, por
+   prioridade — extremidade de elemento linear → centro de objeto → eixo do
+   elemento → grade. É o que faz duas paredes se encontrarem sem vão.
+
+## 3.5 Intelligence
+
+Camada de análise em `shared/lib/intelligence/`, independente da interface:
+funções puras de `AnalysisContext` (Layout + Flow + ambiente) para `Insight[]`.
+
+```
+Layout + Flow
+      ↓
+INSIGHT_RULES (layoutRules · flowRules · integrationRules)
+      ↓
+Insight { id, ruleId, severity, title, description, recommendation, targets }
+      ↓
+IntelligencePanel (só apresenta)
+```
+
+Quatro compromissos: determinística (mesma entrada, mesma saída, ordenada por
+severidade), explicável (cada insight carrega a regra que o gerou e o que
+fazer), testável (sem React, canvas ou store) e independente da UI. Sem IA
+generativa — primeiro o modelo confiável, depois inteligência sobre ele.
+
+As regras de Layout reaproveitam `spatialRules`; as de Flow validam o modelo
+operacional sem bloquear a edição; as de integração cruzam as duas camadas
+(vínculo quebrado, percurso longo entre áreas ligadas, fluxo sem âncora no
+espaço). O cálculo é adiado 350 ms e só roda com o painel visível: análise por
+quadro de arraste travaria o canvas.
+
 ## 4. Arquitetura do editor 2D
 
 ### 4.1 Modelo de objetos do canvas

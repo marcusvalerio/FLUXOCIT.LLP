@@ -10,6 +10,30 @@
 > — sem ela o frontend nunca chama API alguma. Nada abaixo é necessário
 > nesta versão.
 
+## Ambiente de desenvolvimento com conta (Worker + D1 locais)
+
+Dá para exercitar o modo conta inteiro **sem conta Cloudflare e sem nenhuma
+credencial** — o `wrangler dev --local` sobe o Worker com um D1 em disco:
+
+```bash
+cd worker
+npm install
+npx wrangler d1 migrations apply argus-db --local   # cria as tabelas
+npx wrangler dev --local --port 8787                # Worker em localhost:8787
+
+# noutro terminal, o frontend apontando para ele:
+cd ..
+VITE_API_BASE_URL=http://localhost:8787 npm run dev
+```
+
+O envio de e-mail cai no `ConsoleEmailSender`: a senha temporária do cadastro
+aparece no terminal do wrangler, o que basta para completar login e troca
+obrigatória de senha. `FRONTEND_ORIGIN` em `wrangler.toml` está em
+`http://localhost:5173` (a porta do `vite dev`) — o cookie de sessão só é
+aceito nessa origem.
+
+Nada disso toca produção: banco local, sem secrets, sem deploy.
+
 ## Backend (Fase 9) — apenas para a futura versão multiusuário
 
 > Este documento lista os passos **manuais**, numa conta Cloudflare (e

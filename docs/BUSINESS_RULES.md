@@ -222,3 +222,29 @@
   vazio — reaproveita o painel/toggle já existente em vez de criar uma
   tela nova, mantendo a prancheta como foco principal da interface. Ver
   `src/features/editor/metrics-panel/MetricsPanel.tsx`.
+
+## Snapping, Flow operacional e Intelligence (ARGUS)
+
+**Snapping.** O limiar é de 8 px de tela convertidos para centímetros, para o
+encaixe ter a mesma força em qualquer zoom. Ao desenhar, a prioridade é
+extremidade → centro → eixo → grade; ao arrastar, vence o alvo mais próximo
+entre arestas, centros, limites do ambiente e os alvos logísticos (carga
+unitizada ↔ centro da estrutura de armazenagem; equipamento móvel ↔ eixo do
+corredor). Snap desligado significa posição livre, sem nenhum ajuste.
+
+**Flow operacional.** Cada etapa pode declarar capacidade (com unidade) e
+tempo de processo (com unidade), e só os campos que fazem sentido para o tipo
+aparecem: vazão para quem processa, estoque para quem acumula, nada para área
+administrativa. Todos são opcionais — rascunho não é obrigado a estimar o que
+ainda não se sabe.
+
+**Intelligence.** Alertas nunca impedem a edição. A severidade segue a
+semântica de cor do design system: `critical` para dado inconsistente ou
+conflito físico, `warning` para o que compromete a operação, `info` para o que
+merece revisão. Toda regra é determinística e vem acompanhada da recomendação
+— um alerta sem "o que fazer" é só uma reclamação.
+
+**Métricas.** Só derivam do estado real. Quando falta dado (distância de fluxo
+sem etapas vinculadas, gargalo sem duas etapas comparáveis), a métrica é
+exibida como "—" com a explicação do que seria preciso: métrica ausente é
+informação, métrica inventada é ruído.

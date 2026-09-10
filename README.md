@@ -205,6 +205,15 @@ npm run lint      # lint (oxlint)
       Fluxo, e autenticação da aplicação por modo (local sem conta /
       multiusuário contra Worker + D1) com ownership verificado no servidor
 
+- [x] Fase 13 — Snapping avançado (extremidade, eixo e centro ao desenhar;
+      alvos logísticos ao arrastar), Flow com metadata operacional
+      (capacidade e tempo por tipo de etapa), camada de Intelligence
+      determinística e explicável (regras de layout, fluxo e integração com
+      recomendação), métricas derivadas do modelo operacional, Object
+      Registry com papéis logísticos e limites de dimensão, e auditoria de
+      autenticação/ownership validada ponta a ponta contra Worker + D1
+      locais
+
 Fora do escopo até aqui (aguardando instrução): editor 3D, times/
 organizações compartilhadas, deploy automático (CI/CD). O frontend
 pode ser publicado no Vercel a partir do GitHub (`vercel.json`); o
