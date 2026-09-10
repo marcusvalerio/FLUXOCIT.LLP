@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, within } from '@testing-library/react'
 
 // O card desenha o símbolo técnico real via Konva (canvas), que não roda em jsdom. O que este
 // teste observa é a interação, não o desenho.
@@ -17,14 +17,23 @@ const { LibraryPanel } = await import('./LibraryPanel')
  * distinção entre "mesmo gesto" e "dois gestos intencionais": o primeiro insere uma vez, o
  * segundo insere de novo.
  */
+/** O card é o <button> que embrulha o símbolo técnico — o que distingue um card dos chips de
+ * categoria, que também são botões. É neste elemento que o dedo encosta. */
+function cardsOf(container: HTMLElement): HTMLButtonElement[] {
+  return within(container)
+    .getAllByTestId('thumb')
+    .map((thumb) => {
+      const card = thumb.closest('button')
+      if (!card) throw new Error('card da biblioteca não encontrado')
+      return card as HTMLButtonElement
+    })
+}
+
 function renderPanel() {
   const onPick = vi.fn()
-  render(<LibraryPanel onPick={onPick} variant="grid" />)
-  // O primeiro card da categoria inicial — qualquer um serve, todos passam pelo mesmo caminho.
-  // O símbolo técnico só existe dentro de um card, o que o distingue dos chips de categoria.
-  const card = screen.getAllByTestId('thumb')[0].closest('button')
-  if (!card) throw new Error('card da biblioteca não encontrado')
-  return { onPick, card }
+  const { container, unmount } = render(<LibraryPanel onPick={onPick} variant="grid" />)
+  const cards = cardsOf(container)
+  return { onPick, card: cards[0], cards, unmount }
 }
 
 /** Um toque completo como o navegador o entrega: ponteiro, e depois o clique daquele ponteiro. */
@@ -111,5 +120,73 @@ describe('LibraryPanel — inserção por gesto', () => {
     fireEvent.click(card, { detail: 0 })
     fireEvent.click(card, { detail: 0 })
     expect(onPick).toHaveBeenCalledTimes(2)
+  })
+  it('7 — o guardião está no card que o usuário toca, não num ancestral', () => {
+    const { onPick, card } = renderPanel()
+
+    // O elemento que carrega o gesto é o próprio card: é ele que anuncia o arrasto nativo…
+    expect(card.tagName).toBe('BUTTON')
+    expect(card).toHaveAttribute('draggable', 'true')
+
+    // …e é o toque *nele* que insere. Um toque no painel, fora de qualquer card, não insere nada.
+    const panel = card.closest('div[class*="flex-col"]')
+    if (!panel) throw new Error('painel não encontrado')
+    fireEvent.pointerDown(panel, { pointerType: 'touch' })
+    fireEvent.click(panel, { detail: 1 })
+    expect(onPick).not.toHaveBeenCalled()
+
+    tap(card)
+    expect(onPick).toHaveBeenCalledTimes(1)
+  })
+
+  it('7 — cada card tem identidade de gesto própria', () => {
+    const { onPick, cards } = renderPanel()
+
+    tap(cards[0])
+    tap(cards[1])
+
+    expect(onPick).toHaveBeenCalledTimes(2)
+    expect(onPick.mock.calls[0][0]).not.toBe(onPick.mock.calls[1][0])
+  })
+
+  it('8 — com vários painéis montados, só o que recebeu o gesto responde', () => {
+    // É o que o editor faz de verdade: barra lateral (desktop), gaveta (mobile) e gaveta
+    // (tablet) coexistem no DOM, escondidas por CSS. Só uma recebe o dedo.
+    const sidebar = vi.fn()
+    const sheet = vi.fn()
+    const { container: sidebarDom } = render(<LibraryPanel onPick={sidebar} variant="list" />)
+    const { container: sheetDom } = render(<LibraryPanel onPick={sheet} variant="grid" />)
+
+    tap(cardsOf(sheetDom)[0])
+
+    expect(sheet).toHaveBeenCalledTimes(1)
+    expect(sidebar).not.toHaveBeenCalled()
+
+    tap(cardsOf(sidebarDom)[0])
+
+    expect(sidebar).toHaveBeenCalledTimes(1)
+    expect(sheet).toHaveBeenCalledTimes(1)
+  })
+
+  it('J — abrir e fechar a biblioteca não acumula handlers', () => {
+    const documentSpy = vi.spyOn(document, 'addEventListener')
+    const windowSpy = vi.spyOn(window, 'addEventListener')
+
+    // Cinco ciclos de abrir/fechar a gaveta.
+    for (let i = 0; i < 5; i++) {
+      const { unmount } = renderPanel()
+      unmount()
+    }
+
+    // A biblioteca não registra nada em document/window — não há o que vazar entre aberturas.
+    expect(documentSpy).not.toHaveBeenCalled()
+    expect(windowSpy).not.toHaveBeenCalled()
+    documentSpy.mockRestore()
+    windowSpy.mockRestore()
+
+    // E a abertura seguinte continua inserindo uma vez por toque, não seis.
+    const { onPick, card } = renderPanel()
+    tap(card)
+    expect(onPick).toHaveBeenCalledTimes(1)
   })
 })
