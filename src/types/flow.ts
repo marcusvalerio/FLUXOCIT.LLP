@@ -13,6 +13,14 @@ export type FlowNodeType =
   | 'administrative'
   | 'custom'
 
+/** Unidades de capacidade de uma etapa. Fluxo (…/h) para etapas de processamento; estoque
+ * (pallets, posições) para etapas que acumulam, como armazenagem e quarentena. */
+export const FLOW_CAPACITY_UNITS = ['pallets/h', 'caixas/h', 'pedidos/h', 'veículos/h', 'pallets', 'posições'] as const
+export type FlowCapacityUnit = (typeof FLOW_CAPACITY_UNITS)[number]
+
+export const FLOW_TIME_UNITS = ['s', 'min', 'h'] as const
+export type FlowTimeUnit = (typeof FLOW_TIME_UNITS)[number]
+
 export interface FlowNode {
   id: string
   type: FlowNodeType
@@ -23,6 +31,49 @@ export interface FlowNode {
   /** Optional link to a LayoutObject.id — associates this process step with a physical
    * area/object already placed on the Layout board (see docs/ARCHITECTURE.md § Fluxo). */
   linkedObjectId?: string
+  /**
+   * Metadata operacional — o que transforma o Fluxo de diagrama em modelo da operação. Todos
+   * opcionais: um projeto em rascunho não deve ser obrigado a estimar números que ainda não
+   * conhece, e a Intelligence sinaliza a ausência quando ela importa (ver lib/intelligence).
+   */
+  capacity?: number
+  capacityUnit?: FlowCapacityUnit
+  processTime?: number
+  processTimeUnit?: FlowTimeUnit
+}
+
+/**
+ * Quais campos operacionais fazem sentido para cada tipo de etapa — o painel só mostra o que é
+ * relevante, em vez de pedir "capacidade" de uma área administrativa.
+ *
+ * `capacity: 'throughput'` é vazão (o que passa por hora); `'stock'` é acúmulo (o que cabe).
+ */
+export interface FlowOperationalFields {
+  capacity: 'throughput' | 'stock' | null
+  time: boolean
+  defaultCapacityUnit: FlowCapacityUnit
+}
+
+const OPERATIONAL_FIELDS: Record<FlowNodeType, FlowOperationalFields> = {
+  receiving: { capacity: 'throughput', time: true, defaultCapacityUnit: 'pallets/h' },
+  inspection: { capacity: 'throughput', time: true, defaultCapacityUnit: 'caixas/h' },
+  storage: { capacity: 'stock', time: false, defaultCapacityUnit: 'posições' },
+  picking: { capacity: 'throughput', time: true, defaultCapacityUnit: 'pedidos/h' },
+  staging: { capacity: 'stock', time: true, defaultCapacityUnit: 'pallets' },
+  shipping: { capacity: 'throughput', time: true, defaultCapacityUnit: 'pallets/h' },
+  returns: { capacity: 'throughput', time: true, defaultCapacityUnit: 'caixas/h' },
+  quarantine: { capacity: 'stock', time: false, defaultCapacityUnit: 'pallets' },
+  administrative: { capacity: null, time: false, defaultCapacityUnit: 'pedidos/h' },
+  custom: { capacity: 'throughput', time: true, defaultCapacityUnit: 'pallets/h' },
+}
+
+export function getFlowOperationalFields(type: FlowNodeType): FlowOperationalFields {
+  return OPERATIONAL_FIELDS[type]
+}
+
+/** Rótulo curto da capacidade conforme a natureza da etapa. */
+export function getCapacityLabel(type: FlowNodeType): string {
+  return getFlowOperationalFields(type).capacity === 'stock' ? 'Capacidade (estoque)' : 'Capacidade (vazão)'
 }
 
 /** Extensible per BR: each connection carries a semantic flow type (material/pallet/pessoas/

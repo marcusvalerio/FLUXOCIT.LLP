@@ -19,6 +19,7 @@ import {
   RotateCcw,
   RotateCw,
   Save,
+  Sparkles,
   Trash2,
   TriangleAlert,
   Undo2,
@@ -29,6 +30,7 @@ import { EditorCanvas, type EditorCanvasHandle } from './canvas/EditorCanvas'
 import { CanvasControls } from './canvas/CanvasControls'
 import { EnvironmentPanel } from './environment-panel/EnvironmentPanel'
 import { MetricsPanel } from './metrics-panel/MetricsPanel'
+import { IntelligencePanel } from './intelligence-panel/IntelligencePanel'
 import { LibraryPanel } from './library-panel/LibraryPanel'
 import { PropertiesPanel } from './properties-panel/PropertiesPanel'
 import { PropertiesEmptyState } from './properties-panel/PropertiesEmptyState'
@@ -51,7 +53,7 @@ import type { ObjectTypeKey } from '../../types/layout'
 import type { FlowNodeType } from '../../types/flow'
 
 type Board = 'layout' | 'flow'
-type SidePanelTab = 'properties' | 'environment' | 'metrics'
+type SidePanelTab = 'properties' | 'environment' | 'metrics' | 'analysis'
 
 const BOARD_OPTIONS: { value: Board; label: string }[] = [
   { value: 'layout', label: 'Layout' },
@@ -62,6 +64,7 @@ const SIDE_PANEL_OPTIONS: { value: SidePanelTab; label: string }[] = [
   { value: 'properties', label: 'Propriedades' },
   { value: 'environment', label: 'Ambiente' },
   { value: 'metrics', label: 'Métricas' },
+  { value: 'analysis', label: 'Análise' },
 ]
 
 /** Rótulo e cor do indicador de salvamento no cabeçalho — estado, não decoração. */
@@ -108,6 +111,7 @@ export function EditorPage() {
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [environmentOpen, setEnvironmentOpen] = useState(false)
   const [metricsOpen, setMetricsOpen] = useState(false)
+  const [analysisOpen, setAnalysisOpen] = useState(false)
   const [sidePanelTab, setSidePanelTab] = useState<SidePanelTab>('properties')
   const [menuOpen, setMenuOpen] = useState(false)
   const [justSaved, setJustSaved] = useState(false)
@@ -527,6 +531,17 @@ export function EditorPage() {
                       <BarChart3 size={16} className="text-text-secondary" />
                       Métricas do projeto
                     </button>
+                    <button
+                      role="menuitem"
+                      className={`${menuItemClass} md:hidden`}
+                      onClick={() => {
+                        setMenuOpen(false)
+                        setAnalysisOpen(true)
+                      }}
+                    >
+                      <Sparkles size={16} className="text-text-secondary" />
+                      Análise do projeto
+                    </button>
                     <div aria-hidden="true" className="my-1.5 h-px bg-border md:hidden" />
                     <button
                       role="menuitem"
@@ -735,6 +750,7 @@ export function EditorPage() {
                     <MetricsPanel />
                   </div>
                 )}
+                {sidePanelTab === 'analysis' && <IntelligencePanel active />}
               </div>
             </>
           ) : (
@@ -914,6 +930,14 @@ export function EditorPage() {
         <div className="md:hidden">
           <BottomSheet title="Métricas" onClose={() => setMetricsOpen(false)}>
             <MetricsPanel />
+          </BottomSheet>
+        </div>
+      )}
+
+      {board === 'layout' && analysisOpen && (
+        <div className="md:hidden">
+          <BottomSheet title="Análise" onClose={() => setAnalysisOpen(false)}>
+            <IntelligencePanel active />
           </BottomSheet>
         </div>
       )}
