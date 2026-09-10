@@ -64,13 +64,11 @@ export function BottomSheet({
             <X size={20} />
           </button>
         </div>
-        <div
-          className={`min-h-0 flex-1 overflow-hidden p-4 transition-[grid-template-rows,opacity] duration-200 ease-out grid ${
-            collapsed ? 'grid-rows-[0fr] opacity-0 !p-0' : 'grid-rows-[1fr] opacity-100'
-          }`}
-        >
-          <div className="min-h-0 min-w-0 overflow-hidden">{children}</div>
-        </div>
+        {collapsed ? null : (
+          <div className="min-h-0 flex-1 overflow-hidden p-4">
+            <div className="h-full min-h-0 min-w-0 overflow-hidden">{children}</div>
+          </div>
+        )}
       </div>
     </div>
   )
