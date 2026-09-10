@@ -115,8 +115,8 @@ export function LibraryPanel({ onPick, variant = 'list', armedType = null }: Lib
     variant === 'grid' ? 'grid grid-cols-2 gap-2' : 'flex flex-col gap-0.5'
 
   return (
-    <div className="flex min-h-0 flex-col">
-      <div className="relative mb-3">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="relative mb-3 shrink-0">
         <Search
           size={15}
           className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-disabled transition-colors duration-150"
@@ -145,7 +145,7 @@ export function LibraryPanel({ onPick, variant = 'list', armedType = null }: Lib
       </div>
 
       {!searching && (
-        <div className="mb-3 flex flex-wrap gap-1">
+        <div className="mb-3 flex shrink-0 flex-wrap gap-1">
           {OBJECT_CATEGORIES_ORDER.map((cat) => (
             <button
               key={cat}
@@ -164,7 +164,7 @@ export function LibraryPanel({ onPick, variant = 'list', armedType = null }: Lib
         </div>
       )}
 
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto scrollbar-slim">
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain touch-pan-y scrollbar-slim">
         {results.map((group) => (
           <div key={group.category}>
             {searching && (
