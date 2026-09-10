@@ -6,6 +6,7 @@ import type { Layout, LayoutObject, ObjectCategory, ObjectTypeKey } from '../../
 import type { FlowConnection, FlowConnectionType, FlowNode, FlowNodeType } from '../../../types/flow'
 import { FLOW_NODE_SIZE } from '../../../types/flow'
 import { OBJECT_CATALOG } from '../objects/catalog'
+import type { EditorToolId } from '../tools/toolRegistry'
 
 export type AlignMode = 'left' | 'right' | 'top' | 'bottom' | 'centerX' | 'centerY'
 export type DistributeAxis = 'x' | 'y'
@@ -33,10 +34,11 @@ export interface Camera {
   zoom: number
 }
 
-/** Ferramenta ativa da prancheta. 'select' é o padrão (clicar seleciona, arrastar em área vazia
- * faz marquee); 'pan' transforma o arraste com o botão esquerdo em deslocamento da prancheta,
- * para quem prefere uma ferramenta explícita ao invés de botão direito / espaço. */
-export type CanvasTool = 'select' | 'pan'
+/** Medição efêmera da ferramenta Medir — vive no editor, nunca no modelo salvo do projeto. */
+export interface Measurement {
+  start: { x: number; y: number }
+  end: { x: number; y: number }
+}
 
 interface EditorState {
   layoutId: string | null
@@ -49,7 +51,12 @@ interface EditorState {
   objects: LayoutObject[]
   selectedIds: string[]
   camera: Camera
-  canvasTool: CanvasTool
+  /** Ferramenta ativa — ver features/editor/tools/toolRegistry.ts. */
+  activeTool: EditorToolId
+  /** Tipo armado para a ferramenta "Inserir objeto": o próximo clique na prancheta o posiciona. */
+  placeObjectType: ObjectTypeKey | null
+  /** Resultado corrente da ferramenta Medir (cm, coordenadas de mundo) — não é persistido. */
+  measurement: Measurement | null
   /** True enquanto a barra de espaço estiver pressionada: o arraste vira pan temporário, então
    * os objetos param de ser arrastáveis para o gesto não fazer as duas coisas ao mesmo tempo. */
   spacePanActive: boolean
@@ -74,6 +81,17 @@ interface EditorState {
   loadLayout: (layout: Layout) => void
   setEnvironmentSize: (widthM: number, heightM: number) => void
   addObject: (objectType: ObjectTypeKey, worldXCm: number, worldYCm: number) => void
+  /** Cria um objeto com geometria explícita (ferramentas Parede/Área) — mesma entrada de
+   * histórico e mesma seleção resultante de qualquer outra criação. Devolve o id criado. */
+  createObject: (input: {
+    objectType: ObjectTypeKey
+    x: number
+    y: number
+    width?: number
+    length?: number
+    rotationDeg?: number
+    properties?: Record<string, unknown>
+  }) => string
   moveObjectLive: (id: string, xCm: number, yCm: number) => void
   commitObject: (id: string, patch: Partial<LayoutObject>) => void
   setProperty: (id: string, key: string, value: unknown) => void
@@ -104,7 +122,10 @@ interface EditorState {
   undo: () => void
   redo: () => void
   setCamera: (camera: Partial<Camera>) => void
-  setCanvasTool: (tool: CanvasTool) => void
+  setActiveTool: (tool: EditorToolId) => void
+  /** Arma um tipo de objeto e ativa a ferramenta de inserção; `null` desarma e volta a Selecionar. */
+  armPlaceObject: (objectType: ObjectTypeKey | null) => void
+  setMeasurement: (measurement: Measurement | null) => void
   setSpacePanActive: (active: boolean) => void
   setSnapEnabled: (enabled: boolean) => void
   toggleGrid: () => void
@@ -141,7 +162,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   objects: [],
   selectedIds: [],
   camera: { x: 0, y: 0, zoom: 1 },
-  canvasTool: 'select',
+  activeTool: 'select',
+  placeObjectType: null,
+  measurement: null,
   spacePanActive: false,
   snapEnabled: true,
   gridVisible: true,
@@ -181,12 +204,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       envHeightM: Math.max(1, heightM),
     }),
 
-  addObject: (objectType, worldXCm, worldYCm) => {
+  /** Criação canônica: toda inserção de objeto passa por aqui (biblioteca, ferramentas de
+   * desenho, drag & drop), então histórico, seleção e z-order têm sempre o mesmo comportamento. */
+  createObject: ({ objectType, x, y, width, length, rotationDeg, properties }) => {
     const def = OBJECT_CATALOG[objectType]
-    const { objects, history, gridStepM, snapEnabled } = get()
-    const stepCm = gridStepM * 100
-    const x = snapEnabled ? snapToGrid(worldXCm - def.defaultWidth / 2, stepCm) : worldXCm - def.defaultWidth / 2
-    const y = snapEnabled ? snapToGrid(worldYCm - def.defaultLength / 2, stepCm) : worldYCm - def.defaultLength / 2
+    const { objects, history } = get()
 
     const newObject: LayoutObject = {
       id: createId(),
@@ -194,17 +216,32 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       category: def.category,
       x,
       y,
-      width: def.defaultWidth,
-      length: def.defaultLength,
-      rotationDeg: 0,
+      width: width ?? def.defaultWidth,
+      length: length ?? def.defaultLength,
+      rotationDeg: rotationDeg ?? 0,
       zIndex: insertZIndex(objects, def.category),
-      properties: { ...(def.defaultProperties ?? {}) },
+      properties: { ...(def.defaultProperties ?? {}), ...(properties ?? {}) },
     }
 
     set({
       objects: [...objects, newObject],
       selectedIds: [newObject.id],
       history: { past: [...history.past, snapshot(objects)].slice(-MAX_HISTORY), future: [] },
+    })
+    return newObject.id
+  },
+
+  addObject: (objectType, worldXCm, worldYCm) => {
+    const def = OBJECT_CATALOG[objectType]
+    const { gridStepM, snapEnabled } = get()
+    const stepCm = gridStepM * 100
+    const rawX = worldXCm - def.defaultWidth / 2
+    const rawY = worldYCm - def.defaultLength / 2
+
+    get().createObject({
+      objectType,
+      x: snapEnabled ? snapToGrid(rawX, stepCm) : rawX,
+      y: snapEnabled ? snapToGrid(rawY, stepCm) : rawY,
     })
   },
 
@@ -562,7 +599,23 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   setCamera: (camera) => set({ camera: { ...get().camera, ...camera } }),
-  setCanvasTool: (tool) => set({ canvasTool: tool }),
+  setActiveTool: (tool) => {
+    // Trocar de ferramenta limpa o que pertencia à anterior: o tipo armado da inserção e a
+    // medição na tela. Sem isso o editor guarda estado invisível de uma ferramenta inativa.
+    set({
+      activeTool: tool,
+      placeObjectType: tool === 'place' ? get().placeObjectType : null,
+      measurement: tool === 'measure' ? get().measurement : null,
+    })
+  },
+
+  armPlaceObject: (objectType) =>
+    set({
+      placeObjectType: objectType,
+      activeTool: objectType ? 'place' : 'select',
+    }),
+
+  setMeasurement: (measurement) => set({ measurement }),
   setSpacePanActive: (active) => {
     if (get().spacePanActive !== active) set({ spacePanActive: active })
   },

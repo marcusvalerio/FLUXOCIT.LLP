@@ -37,6 +37,7 @@ import { FlowCanvas, type FlowCanvasHandle } from './flow/FlowCanvas'
 import { FlowLibraryPanel } from './flow/FlowLibraryPanel'
 import { FlowPropertiesPanel } from './flow/FlowPropertiesPanel'
 import { useEditorStore } from './state/useEditorStore'
+import { getTool, toolForShortcut } from './tools/toolRegistry'
 import { layoutRepository } from '../../shared/data/repository'
 import { findStorageOverlaps, getBoundsStatus } from '../../shared/lib/spatialRules'
 import { Button } from '../../shared/ui/Button'
@@ -45,6 +46,7 @@ import { SegmentedControl } from '../../shared/ui/SegmentedControl'
 import { ThemeToggle } from '../../shared/ui/ThemeToggle'
 import { BottomSheet } from '../../shared/ui/BottomSheet'
 import { BrandMark } from '../../shared/ui/BrandMark'
+import { OBJECT_CATALOG } from './objects/catalog'
 import type { ObjectTypeKey } from '../../types/layout'
 import type { FlowNodeType } from '../../types/flow'
 
@@ -118,6 +120,10 @@ export function EditorPage() {
   const [canvasDragging, setCanvasDragging] = useState(false)
   const [flowPropertiesCollapsed, setFlowPropertiesCollapsed] = useState(true)
 
+  const activeTool = useEditorStore((s) => s.activeTool)
+  const setActiveTool = useEditorStore((s) => s.setActiveTool)
+  const placeObjectType = useEditorStore((s) => s.placeObjectType)
+  const armPlaceObject = useEditorStore((s) => s.armPlaceObject)
   const layoutName = useEditorStore((s) => s.layoutName)
   const objects = useEditorStore((s) => s.objects)
   // Live drag updates (moveObjectLive/moveManyLive) change `objects` every frame without touching
@@ -323,6 +329,17 @@ export function EditorPage() {
         return
       }
 
+      // Atalhos de ferramenta (V/H/W/A/M/P), sempre sem modificador — Ctrl+A continua livre
+      // para outras ações e a digitação em campos já saiu no guard acima.
+      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        const toolId = toolForShortcut(e.key)
+        if (toolId) {
+          e.preventDefault()
+          setActiveTool(toolId)
+          return
+        }
+      }
+
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
         e.preventDefault()
         undo()
@@ -337,6 +354,7 @@ export function EditorPage() {
         duplicateSelected()
       } else if (e.key === 'Escape') {
         selectObject(null)
+        if (activeTool !== 'select') setActiveTool('select')
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -358,6 +376,8 @@ export function EditorPage() {
     selectFlowNode,
     selectFlowConnection,
     layoutId2,
+    activeTool,
+    setActiveTool,
   ])
 
   // Menu de ações secundárias: fecha ao clicar fora ou com Escape.
@@ -550,7 +570,7 @@ export function EditorPage() {
           </PanelHeader>
           <div className="flex min-h-0 flex-1 flex-col p-2.5">
             {board === 'layout' ? (
-              <LibraryPanel onInsert={handleInsert} />
+              <LibraryPanel onPick={armPlaceObject} armedType={placeObjectType} />
             ) : (
               <FlowLibraryPanel onInsert={handleFlowInsert} />
             )}
@@ -613,6 +633,31 @@ export function EditorPage() {
                 >
                   <Maximize size={18} />
                 </IconButton>
+              </div>
+            </div>
+          )}
+
+          {/* Faixa de contexto: diz o que a ferramenta ativa faz e, na inserção, o que está
+              armado. É o que evita o "cliquei na biblioteca e nada aconteceu". */}
+          {board === 'layout' && activeTool !== 'select' && (
+            <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 animate-drop-in">
+              <div className="pointer-events-auto flex max-w-[min(92vw,34rem)] items-center gap-2 rounded-full border border-primary/30 bg-surface/95 py-1.5 pl-3 pr-1.5 shadow-sm backdrop-blur-sm">
+                <span className="font-heading text-[11px] font-semibold uppercase tracking-wide text-primary">
+                  {getTool(activeTool).label}
+                </span>
+                <span aria-hidden="true" className="h-3.5 w-px bg-border" />
+                <span className="truncate text-[11px] leading-tight text-text-secondary">
+                  {activeTool === 'place' && placeObjectType
+                    ? `${OBJECT_CATALOG[placeObjectType].label} — clique na prancheta para posicionar`
+                    : getTool(activeTool).hint}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setActiveTool('select')}
+                  className="rounded-full px-2 py-1 text-[11px] font-medium text-text-secondary transition-colors duration-150 hover:bg-surface-alt hover:text-text-primary"
+                >
+                  Concluir
+                </button>
               </div>
             </div>
           )}
@@ -774,7 +819,9 @@ export function EditorPage() {
       {board === 'layout' && libraryOpen && (
         <>
           <BottomSheet title="Biblioteca de objetos" onClose={() => setLibraryOpen(false)}>
-            <LibraryPanel onInsert={handleInsert} variant="grid" />
+            {/* No toque, escolher já insere no centro da viewport: um toque só, sem segundo
+                passo de posicionamento. Na barra lateral (desktop) o clique arma a ferramenta. */}
+            <LibraryPanel onPick={handleInsert} variant="grid" />
           </BottomSheet>
           <div className="fixed inset-0 z-30 hidden md:block lg:hidden">
             <button
@@ -793,7 +840,7 @@ export function EditorPage() {
                 </button>
               </PanelHeader>
               <div className="flex min-h-0 flex-1 flex-col p-3">
-                <LibraryPanel onInsert={handleInsert} />
+                <LibraryPanel onPick={handleInsert} />
               </div>
             </div>
           </div>

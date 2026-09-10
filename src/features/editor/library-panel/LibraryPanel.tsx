@@ -13,19 +13,25 @@ import type { ObjectTypeDefinition } from '../objects/types'
 import type { ObjectTypeKey } from '../../../types/layout'
 
 interface LibraryPanelProps {
-  onInsert: (objectType: ObjectTypeKey) => void
+  /** O que fazer com o objeto escolhido — na barra lateral, armar a ferramenta de inserção;
+   * na gaveta de toque, inserir direto no centro da viewport (um toque só). */
+  onPick: (objectType: ObjectTypeKey) => void
   /** Layout de grade (2 colunas) para a gaveta mobile; a barra lateral usa lista. */
   variant?: 'list' | 'grid'
+  /** Tipo atualmente armado, destacado na lista. */
+  armedType?: ObjectTypeKey | null
 }
 
 function LibraryItem({
   def,
   variant,
-  onInsert,
+  armed,
+  onPick,
 }: {
   def: ObjectTypeDefinition
   variant: 'list' | 'grid'
-  onInsert: (objectType: ObjectTypeKey) => void
+  armed: boolean
+  onPick: (objectType: ObjectTypeKey) => void
 }) {
   const [dragging, setDragging] = useState(false)
 
@@ -45,10 +51,11 @@ function LibraryItem({
     return (
       <button
         {...dragProps}
-        onClick={() => onInsert(def.key)}
-        className={`group flex flex-col overflow-hidden rounded-xl border border-border bg-surface text-left transition-[border-color,box-shadow,transform] duration-150 ease-out hover:border-primary/50 hover:shadow-sm active:scale-[0.98] ${
-          dragging ? 'library-item-dragging' : ''
-        }`}
+        onClick={() => onPick(def.key)}
+        aria-pressed={armed}
+        className={`group flex flex-col overflow-hidden rounded-xl border bg-surface text-left transition-[border-color,box-shadow,transform] duration-150 ease-out hover:border-primary/50 hover:shadow-sm active:scale-[0.98] ${
+          armed ? 'border-primary ring-1 ring-primary/30' : 'border-border'
+        } ${dragging ? 'library-item-dragging' : ''}`}
       >
         <span className="flex items-center justify-center bg-surface-alt/70 transition-colors duration-150 group-hover:bg-primary/5">
           <ObjectThumbnail objectType={def.key} width={130} height={78} />
@@ -66,10 +73,11 @@ function LibraryItem({
   return (
     <button
       {...dragProps}
-      onClick={() => onInsert(def.key)}
-      className={`group flex w-full items-center gap-3 rounded-xl border border-transparent px-2 py-2 text-left transition-[background-color,border-color,transform] duration-150 ease-out hover:border-border hover:bg-surface-alt/60 active:scale-[0.99] ${
-        dragging ? 'library-item-dragging' : ''
-      }`}
+      onClick={() => onPick(def.key)}
+      aria-pressed={armed}
+      className={`group flex w-full items-center gap-3 rounded-xl border px-2 py-2 text-left transition-[background-color,border-color,transform] duration-150 ease-out hover:bg-surface-alt/60 active:scale-[0.99] ${
+        armed ? 'border-primary bg-primary/5' : 'border-transparent hover:border-border'
+      } ${dragging ? 'library-item-dragging' : ''}`}
     >
       <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-surface-alt/70 transition-colors duration-150 group-hover:border-primary/40 group-hover:bg-primary/5">
         <ObjectThumbnail objectType={def.key} width={40} height={40} />
@@ -91,7 +99,7 @@ function LibraryItem({
  * Com busca ativa a navegação por categoria sai do caminho e os resultados aparecem agrupados,
  * porque procurar "doca" não deveria exigir saber que doca é "Estrutura".
  */
-export function LibraryPanel({ onInsert, variant = 'list' }: LibraryPanelProps) {
+export function LibraryPanel({ onPick, variant = 'list', armedType = null }: LibraryPanelProps) {
   const [category, setCategory] = useState<(typeof OBJECT_CATEGORIES_ORDER)[number]>('structure')
   const [query, setQuery] = useState('')
   const searching = query.trim().length > 0
@@ -166,7 +174,13 @@ export function LibraryPanel({ onInsert, variant = 'list' }: LibraryPanelProps) 
             )}
             <div className={itemsClassName}>
               {group.items.map((def) => (
-                <LibraryItem key={def.key} def={def} variant={variant} onInsert={onInsert} />
+                <LibraryItem
+                  key={def.key}
+                  def={def}
+                  variant={variant}
+                  armed={def.key === armedType}
+                  onPick={onPick}
+                />
               ))}
             </div>
           </div>
