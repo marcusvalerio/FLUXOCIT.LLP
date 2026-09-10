@@ -40,7 +40,7 @@ export function BottomSheet({
       aria-label={title}
     >
       {modal && <button aria-label="Fechar" onClick={onClose} className="absolute inset-0 bg-black/30 animate-fade-in" />}
-      <div className="relative bg-surface rounded-t-xl border-t border-border shadow-lg max-h-full flex flex-col pointer-events-auto animate-sheet-in">
+      <div className="relative bg-surface rounded-t-xl border-t border-border shadow-lg max-h-full min-h-0 flex flex-col pointer-events-auto animate-sheet-in">
         <div
           role={onToggleCollapsed ? 'button' : undefined}
           tabIndex={onToggleCollapsed ? 0 : undefined}
@@ -65,11 +65,11 @@ export function BottomSheet({
           </button>
         </div>
         <div
-          className={`overflow-y-auto p-4 transition-[grid-template-rows,opacity] duration-200 ease-out grid ${
+          className={`min-h-0 flex-1 overflow-hidden p-4 transition-[grid-template-rows,opacity] duration-200 ease-out grid ${
             collapsed ? 'grid-rows-[0fr] opacity-0 !p-0' : 'grid-rows-[1fr] opacity-100'
           }`}
         >
-          <div className="overflow-hidden">{children}</div>
+          <div className="min-h-0 min-w-0 overflow-hidden">{children}</div>
         </div>
       </div>
     </div>
