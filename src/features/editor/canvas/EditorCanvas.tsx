@@ -24,15 +24,26 @@ import {
   distanceCm,
   formatDistance,
   rectFromPoints,
-  snapPoint,
   wallFromPoints,
   type PointCm,
 } from '../tools/draftGeometry'
+import { collectSnapCandidates, snapDraftPoint, type SnapPointKind } from '../tools/pointSnapping'
 import type { ObjectTypeKey } from '../../../types/layout'
 
 const MIN_ZOOM = 0.2
 const MAX_ZOOM = 4
 const MARQUEE_MIN_PX = 4
+/** Mesmo limiar do arrasto de objetos (ver canvas/ObjectNode): o encaixe tem uma força só. */
+const SNAP_THRESHOLD_SCREEN_PX = 8
+
+/** O que o encaixe pegou — dito em uma palavra, no ponto onde aconteceu. */
+const SNAP_LABEL: Record<string, string> = {
+  endpoint: 'extremidade',
+  center: 'centro',
+  edge: 'eixo',
+  grid: '',
+  none: '',
+}
 const EXPORT_PADDING_PX = 24
 /** The exported layout uses an opaque, blank paper-like backdrop rather than transparency. */
 const EXPORT_BG = '#F6F4F0'
@@ -109,6 +120,8 @@ export function EditorCanvas({ registerHandle, onDraggingChange, overlay, showMi
   const setSpacePanActive = useEditorStore((s) => s.setSpacePanActive)
   /** Gesto de desenho em andamento (parede, área, medição), em coordenadas de mundo (cm). */
   const [draft, setDraft] = useState<{ start: PointCm; end: PointCm } | null>(null)
+  /** Alvo do último encaixe de ponto — desenhado como marcador enquanto o gesto acontece. */
+  const [draftSnap, setDraftSnap] = useState<{ point: PointCm; kind: SnapPointKind } | null>(null)
   const shiftDownRef = useRef(false)
   const scalePxPerMeter = useEditorStore((s) => s.scalePxPerMeter)
   const gridVisible = useEditorStore((s) => s.gridVisible)
@@ -199,7 +212,10 @@ export function EditorCanvas({ registerHandle, onDraggingChange, overlay, showMi
     }
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Shift') shiftDownRef.current = true
-      if (e.key === 'Escape') setDraft(null)
+      if (e.key === 'Escape') {
+        setDraft(null)
+        setDraftSnap(null)
+      }
       if (e.code === 'Space' && !isEditableTarget(e.target)) {
         if (!spaceDownRef.current) setCursor('grab')
         spaceDownRef.current = true
@@ -381,15 +397,29 @@ export function EditorCanvas({ registerHandle, onDraggingChange, overlay, showMi
     }
   }
 
-  /** Extremidade do rascunho já com snap de grade e, com Shift, trava de ângulo. */
+  /**
+   * Encaixe de um ponto do rascunho. O limiar é definido em pixels de tela e convertido para cm,
+   * então o "imã" tem sempre a mesma força na mão do usuário, em qualquer zoom.
+   */
+  function snapPointForDraft(raw: PointCm): PointCm {
+    const result = snapDraftPoint(raw, collectSnapCandidates(objects), {
+      thresholdCm: pxToCm(SNAP_THRESHOLD_SCREEN_PX / camera.zoom, scalePxPerMeter),
+      gridStepCm: gridStepM * 100,
+      enabled: snapEnabled,
+    })
+    setDraftSnap(result.target ? { point: result.target, kind: result.kind } : null)
+    return result.point
+  }
+
+  /** Extremidade do rascunho: trava de ângulo (Shift) antes do encaixe, nunca depois — senão a
+   * trava desfaria o encaixe que o usuário acabou de ver acontecer. */
   function resolveDraftEnd(start: PointCm, raw: PointCm): PointCm {
-    const stepCm = gridStepM * 100
     const angled = shiftDownRef.current && activeTool !== 'area' ? constrainAngle(start, raw) : raw
-    return snapPoint(angled, stepCm, snapEnabled)
+    return snapPointForDraft(angled)
   }
 
   function beginDraft(point: PointCm) {
-    const start = snapPoint(point, gridStepM * 100, snapEnabled)
+    const start = snapPointForDraft(point)
     setDraft({ start, end: start })
   }
 
@@ -523,6 +553,7 @@ export function EditorCanvas({ registerHandle, onDraggingChange, overlay, showMi
     if (mouseModeRef.current === 'draft') {
       if (draft) commitDraft(draft)
       setDraft(null)
+      setDraftSnap(null)
     }
     if (mouseModeRef.current === 'marquee') finishMarquee()
     mouseModeRef.current = 'none'
@@ -622,6 +653,7 @@ export function EditorCanvas({ registerHandle, onDraggingChange, overlay, showMi
     if (mouseModeRef.current === 'draft' && e.evt.touches.length === 0) {
       if (draft) commitDraft(draft)
       setDraft(null)
+      setDraftSnap(null)
       mouseModeRef.current = 'none'
     }
     if (e.evt.touches.length === 0) singleTouchPan.current = null
@@ -819,6 +851,23 @@ export function EditorCanvas({ registerHandle, onDraggingChange, overlay, showMi
                 listening={false}
               />
             )}
+            {/* Marcador de encaixe: um losango no ponto exato em que a ponta vai cair. Discreto de
+                propósito — informa o encaixe sem competir com o desenho. */}
+            {draftSnap && draftSnap.kind !== 'grid' && (
+              <Rect
+                x={cmToPx(draftSnap.point.x, scalePxPerMeter)}
+                y={cmToPx(draftSnap.point.y, scalePxPerMeter)}
+                width={9 / camera.zoom}
+                height={9 / camera.zoom}
+                offsetX={4.5 / camera.zoom}
+                offsetY={4.5 / camera.zoom}
+                rotation={45}
+                stroke="#0796D7"
+                strokeWidth={1.5 / camera.zoom}
+                fill="#FFFFFF"
+                listening={false}
+              />
+            )}
             {measureLine && (
               <Line
                 points={measureLine.points}
@@ -887,6 +936,18 @@ export function EditorCanvas({ registerHandle, onDraggingChange, overlay, showMi
           style={{ left: selectionBadge.x, top: selectionBadge.y }}
         >
           {selectionBadge.label}
+        </div>
+      )}
+
+      {draftSnap && draftSnap.kind !== 'grid' && (
+        <div
+          className="pointer-events-none absolute z-10 -translate-x-1/2 translate-y-2 rounded-md border border-primary/40 bg-surface/95 px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary shadow-sm"
+          style={{
+            left: camera.x + cmToPx(draftSnap.point.x, scalePxPerMeter) * camera.zoom,
+            top: camera.y + cmToPx(draftSnap.point.y, scalePxPerMeter) * camera.zoom,
+          }}
+        >
+          {SNAP_LABEL[draftSnap.kind]}
         </div>
       )}
 

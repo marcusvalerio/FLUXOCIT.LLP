@@ -21,8 +21,12 @@ export interface ObjectCapabilities {
   rotate: boolean
 }
 
-/** Elementos lineares: o gesto útil é alongar, nunca engrossar por acidente. */
-const LINEAR_TYPES: ReadonlySet<ObjectTypeKey> = new Set<ObjectTypeKey>([
+/**
+ * Elementos lineares: têm um eixo (comprimento) e uma espessura que é característica do tipo.
+ * Isso governa duas coisas — o gesto útil é alongar, nunca engrossar por acidente, e o encaixe
+ * relevante é pelas extremidades e pelo eixo (ver tools/pointSnapping).
+ */
+export const LINEAR_TYPES: ReadonlySet<ObjectTypeKey> = new Set<ObjectTypeKey>([
   'wall',
   'corridor',
   'traffic-lane',

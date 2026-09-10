@@ -27,7 +27,13 @@ export function SelectionTransformer({ nodesByIdRef, pxPerMeter }: SelectionTran
   const objects = useEditorStore((s) => s.objects)
   const commitObject = useEditorStore((s) => s.commitObject)
 
-  const selectedId = selectedIds.length === 1 ? selectedIds[0] : null
+  // Com uma ferramenta de desenho ativa as alças saem de cena: elas são shapes do Konva e
+  // capturariam o clique de quem está tentando traçar uma parede que começa em cima do objeto
+  // selecionado — o gesto viraria um redimensionamento silencioso.
+  const activeTool = useEditorStore((s) => s.activeTool)
+  const interactive = activeTool === 'select'
+
+  const selectedId = selectedIds.length === 1 && interactive ? selectedIds[0] : null
   const selectedObj = selectedId ? objects.find((o) => o.id === selectedId) : undefined
 
   useEffect(() => {
