@@ -37,6 +37,14 @@ function LibraryItem({
 
   // Arrastar até a prancheta insere no ponto solto; o clique/toque insere no centro da viewport
   // (único caminho no toque, onde a API nativa de drag não existe). Ver library-panel/dragAndDrop.
+  //
+  // `draggable` só entra na variante de lista (barra lateral, mouse/desktop) — na gaveta mobile
+  // (`grid`) ele nunca tem efeito útil (a própria linha acima já diz que a API nativa de drag não
+  // existe no toque), e um elemento HTML5 `draggable="true"` é um vetor conhecido de conflito com
+  // o reconhecimento de gesto de scroll do navegador em touch (histórico especialmente no
+  // WebKit/Safari): o navegador precisa decidir entre "começar um drag nativo" e "rolar", e essa
+  // decisão pode consumir o toque para a detecção de drag em vez da rolagem. Removê-lo do card
+  // mobile elimina essa disputa sem custo — nada usa `draggable` no toque de qualquer forma.
   const dragProps = {
     draggable: true,
     onDragStart: (e: ReactDragEvent<HTMLButtonElement>) => {
@@ -50,7 +58,6 @@ function LibraryItem({
   if (variant === 'grid') {
     return (
       <button
-        {...dragProps}
         onClick={() => onPick(def.key)}
         aria-pressed={armed}
         className={`group flex flex-col overflow-hidden rounded-xl border bg-surface text-left transition-[border-color,box-shadow,transform] duration-150 ease-out hover:border-primary/50 hover:shadow-sm active:scale-[0.98] ${
@@ -164,7 +171,7 @@ export function LibraryPanel({ onPick, variant = 'list', armedType = null }: Lib
         </div>
       )}
 
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain touch-pan-y scrollbar-slim">
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain touch-pan-y scrollbar-slim [-webkit-overflow-scrolling:touch]">
         {results.map((group) => (
           <div key={group.category}>
             {searching && (
