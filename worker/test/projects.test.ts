@@ -237,3 +237,96 @@ describe('isolamento entre usuários', () => {
     expect(got.project.flowNodes[0]?.id).toBe('n1')
   })
 })
+
+describe('endurecimento: entradas inválidas e sessões', () => {
+  it('id inexistente responde 404, não 500', async () => {
+    const { cookie } = await signupAndLogin('robusto-a@example.com')
+    const res = await api('/api/projects/nao-existe', { cookie })
+    expect(res.status).toBe(404)
+  })
+
+  it('id malformado também responde 404 e nunca vaza detalhe interno', async () => {
+    const { cookie } = await signupAndLogin('robusto-b@example.com')
+    for (const id of ["'; DROP TABLE projects;--", '../../etc/passwd', '%00', 'a'.repeat(500)]) {
+      const res = await api(`/api/projects/${encodeURIComponent(id)}`, { cookie })
+      expect(res.status).toBe(404)
+      const body = await res.text()
+      expect(body).not.toMatch(/SQLITE|D1_|stack|at Object/i)
+    }
+    // A tabela continua de pé depois da tentativa de injeção.
+    const list = await api('/api/projects', { cookie })
+    expect(list.status).toBe(200)
+  })
+
+  it('campo de tipo errado nunca vira erro de servidor', async () => {
+    const { cookie } = await signupAndLogin('robusto-c@example.com')
+    // Nome ausente ou vazio cai no padrão de propósito; tipo errado é ignorado com segurança.
+    // O que não pode acontecer, em nenhum caso, é 500 — entrada do cliente não é falha do servidor.
+    for (const body of ['{"name":""}', '{"name":123}', '{"name":{"a":1}}', '{"widthM":"muito"}', '{}', 'não é json']) {
+      const res = await api('/api/projects', { method: 'POST', cookie, body })
+      expect(res.status).toBeLessThan(500)
+    }
+
+    const list = await (await api('/api/projects', { cookie })).json<{ projects: { name: string }[] }>()
+    expect(list.projects.every((p) => typeof p.name === 'string' && p.name.length > 0)).toBe(true)
+  })
+
+  it('renomear com tipo errado é 400, não 500', async () => {
+    const { cookie } = await signupAndLogin('robusto-e@example.com')
+    const created = await (
+      await api('/api/projects', { method: 'POST', cookie, body: JSON.stringify({ name: 'P' }) })
+    ).json<{ project: { id: string } }>()
+
+    const res = await api(`/api/projects/${created.project.id}`, {
+      method: 'PATCH',
+      cookie,
+      body: JSON.stringify({ name: 42 }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('payload inválido ao salvar layout é rejeitado', async () => {
+    const { cookie } = await signupAndLogin('robusto-d@example.com')
+    const created = await (
+      await api('/api/projects', { method: 'POST', cookie, body: JSON.stringify({ name: 'P' }) })
+    ).json<{ project: { id: string } }>()
+
+    const res = await api(`/api/projects/${created.project.id}/layout`, {
+      method: 'PUT',
+      cookie,
+      body: JSON.stringify({ objects: 'não é uma lista' }),
+    })
+    expect(res.status).toBeGreaterThanOrEqual(400)
+    expect(res.status).toBeLessThan(500)
+  })
+
+  it('sessão expirada é recusada e removida', async () => {
+    const { cookie } = await signupAndLogin('expirada@example.com')
+    // A sessão vale enquanto não expira…
+    expect((await api('/api/projects', { cookie })).status).toBe(200)
+
+    // …e para de valer no instante em que expira (o registro é envelhecido direto no D1).
+    const db = (env as unknown as { DB: D1Database }).DB
+    await db.exec("UPDATE sessions SET expires_at = '2000-01-01T00:00:00.000Z'")
+
+    const res = await api('/api/projects', { cookie })
+    expect(res.status).toBe(401)
+
+    const remaining = await db.prepare('SELECT COUNT(*) AS total FROM sessions').first<{ total: number }>()
+    expect(remaining?.total).toBe(0)
+  })
+
+  it('cookie de sessão forjado não autentica', async () => {
+    const res = await api('/api/projects', { cookie: 'argus_session=token-inventado' })
+    expect(res.status).toBe(401)
+  })
+
+  it('usuário removido não continua autenticado com a sessão antiga', async () => {
+    const { cookie } = await signupAndLogin('removido@example.com')
+    const db = (env as unknown as { DB: D1Database }).DB
+    await db.exec("DELETE FROM users WHERE email = 'removido@example.com'")
+
+    const res = await api('/api/projects', { cookie })
+    expect(res.status).toBe(401)
+  })
+})
