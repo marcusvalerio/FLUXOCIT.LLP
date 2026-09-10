@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { ArrowLeftRight, Copy, Trash2 } from 'lucide-react'
 import { useEditorStore } from '../state/useEditorStore'
 import { IconButton } from '../../../shared/ui/IconButton'
@@ -27,13 +27,12 @@ function FlowNodeProperties({ node }: { node: FlowNode }) {
 
   // Campos numéricos com rascunho local: digitar "1" em "12" não pode virar um commit por tecla
   // (cada commit é uma entrada de histórico). O valor sobe no blur/Enter.
+  //
+  // O rascunho é reinicializado por remontagem (ver a `key` em FlowPropertiesPanel, que inclui os
+  // valores persistidos) em vez de por efeito de sincronização: digitar não remonta nada, e um
+  // undo que mude a capacidade traz o campo de volta ao valor certo sozinho.
   const [capacityDraft, setCapacityDraft] = useState(node.capacity?.toString() ?? '')
   const [timeDraft, setTimeDraft] = useState(node.processTime?.toString() ?? '')
-
-  useEffect(() => {
-    setCapacityDraft(node.capacity?.toString() ?? '')
-    setTimeDraft(node.processTime?.toString() ?? '')
-  }, [node.id, node.capacity, node.processTime])
 
   function commitNumber(key: 'capacity' | 'processTime', raw: string) {
     const trimmed = raw.trim().replace(',', '.')
@@ -271,7 +270,15 @@ export function FlowPropertiesPanel() {
   const node = selectedFlowNodeId ? flowNodes.find((n) => n.id === selectedFlowNodeId) : undefined
   const connection = selectedFlowConnectionId ? flowConnections.find((c) => c.id === selectedFlowConnectionId) : undefined
 
-  if (node) return <FlowNodeProperties node={node} />
+  // A chave inclui os valores persistidos: qualquer mudança vinda de fora (undo, edição em outro
+  // lugar) remonta o bloco e reinicializa os rascunhos; digitar não muda a chave.
+  if (node)
+    return (
+      <FlowNodeProperties
+        key={`${node.id}:${node.capacity ?? ''}:${node.processTime ?? ''}`}
+        node={node}
+      />
+    )
   if (connection) return <FlowConnectionProperties connection={connection} />
   return null
 }
