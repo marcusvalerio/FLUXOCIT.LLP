@@ -200,4 +200,40 @@ describe('isolamento entre usuários', () => {
     const got = await getRes.json<{ project: { objects: unknown[] } }>()
     expect(got.project.objects).toHaveLength(0)
   })
+
+  it('um usuário não consegue sobrescrever o Fluxo do projeto de outro', async () => {
+    const a = await signupAndLogin('flow-a@example.com')
+    const b = await signupAndLogin('flow-b@example.com')
+    const created = await (
+      await api('/api/projects', { method: 'POST', cookie: a.cookie, body: JSON.stringify({ name: 'Meu fluxo' }) })
+    ).json<{ project: { id: string } }>()
+
+    // O dono grava seu fluxo normalmente.
+    const ownerRes = await api(`/api/projects/${created.project.id}/flow`, {
+      method: 'PUT',
+      cookie: a.cookie,
+      body: JSON.stringify({
+        flowNodes: [{ id: 'n1', type: 'receiving', x: 0, y: 0 }],
+        flowConnections: [],
+      }),
+    })
+    expect(ownerRes.status).toBe(204)
+
+    // O outro usuário não: 404 (não revela nem que o projeto existe).
+    const intruderRes = await api(`/api/projects/${created.project.id}/flow`, {
+      method: 'PUT',
+      cookie: b.cookie,
+      body: JSON.stringify({
+        flowNodes: [{ id: 'invasor', type: 'shipping', x: 99, y: 99 }],
+        flowConnections: [],
+      }),
+    })
+    expect(intruderRes.status).toBe(404)
+
+    // E o fluxo do dono permanece intacto.
+    const getRes = await api(`/api/projects/${created.project.id}`, { cookie: a.cookie })
+    const got = await getRes.json<{ project: { flowNodes: { id: string }[] } }>()
+    expect(got.project.flowNodes).toHaveLength(1)
+    expect(got.project.flowNodes[0]?.id).toBe('n1')
+  })
 })

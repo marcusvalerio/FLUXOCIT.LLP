@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Copy, LayoutGrid, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Copy, LayoutGrid, LogOut, Pencil, Plus, Trash2 } from 'lucide-react'
 import { layoutRepository } from '../../shared/data/repository'
+import { isAccountModeEnabled } from '../../shared/data/authMode'
+import { useAuthStore } from '../auth/state/useAuthStore'
 import { DEFAULT_ENV_HEIGHT_M, DEFAULT_ENV_WIDTH_M } from '../editor/state/useEditorStore'
 import { Button } from '../../shared/ui/Button'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
@@ -15,6 +17,9 @@ import type { LayoutSummary } from '../../types/layout'
  * ficam neste dispositivo (LocalLayoutRepository, via a facade shared/data/repository). */
 export function LayoutsListPage() {
   const navigate = useNavigate()
+  const accountMode = isAccountModeEnabled()
+  const user = useAuthStore((s) => s.user)
+  const logout = useAuthStore((s) => s.logout)
 
   const [layouts, setLayouts] = useState<LayoutSummary[]>([])
   const [loading, setLoading] = useState(true)
@@ -35,7 +40,11 @@ export function LayoutsListPage() {
     try {
       setLayouts(await layoutRepository.listLayouts())
     } catch {
-      setLoadError('Não foi possível carregar seus projetos neste dispositivo. Tente novamente.')
+      setLoadError(
+        accountMode
+          ? 'Não foi possível carregar seus projetos. Verifique sua conexão e tente novamente.'
+          : 'Não foi possível carregar seus projetos neste dispositivo. Tente novamente.',
+      )
     } finally {
       setLoading(false)
     }
@@ -97,6 +106,11 @@ export function LayoutsListPage() {
     }
   }
 
+  async function handleLogout() {
+    await logout()
+    navigate('/login', { replace: true })
+  }
+
   return (
     <div className="min-h-dvh bg-bg">
       <header className="border-b border-border bg-surface">
@@ -113,11 +127,21 @@ export function LayoutsListPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 min-w-0">
+            {/* Identidade da conta só existe no modo multiusuário — no modo local não há sessão
+                para exibir nem de onde sair. Ver shared/data/authMode. */}
+            {accountMode && user && (
+              <span className="hidden truncate text-xs text-text-secondary sm:inline">{user.email}</span>
+            )}
             <ThemeToggle />
             <Button variant="primary" onClick={() => setCreating(true)}>
               <Plus size={18} />
               <span className="hidden sm:inline">Novo projeto</span>
             </Button>
+            {accountMode && (
+              <IconButton label="Sair da conta" onClick={handleLogout}>
+                <LogOut size={18} />
+              </IconButton>
+            )}
           </div>
         </div>
       </header>
