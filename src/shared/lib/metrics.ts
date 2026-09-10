@@ -1,17 +1,41 @@
+import { getCenter } from './geometry'
 import type { LayoutObject } from '../../types/layout'
-import type { FlowNode } from '../../types/flow'
+import type { FlowConnection, FlowNode } from '../../types/flow'
 
 export interface ProjectMetrics {
   areaTotalM2: number
   areaArmazenagemM2: number
   areaOperacionalM2: number
   areaCirculacaoM2: number
+  /** Só de porta-paletes: é o único tipo que declara vãos **e** níveis. Estante, drive-in,
+   * push-back e flow rack declaram apenas níveis, e derivar posições deles exigiria inventar um
+   * número de vãos — preferimos subestimar a inventar. */
   posicoesPallet: number
   qtdEquipamentos: number
   qtdDocas: number
+  /** Apenas objetos do tipo corredor; faixas de tráfego e de pedestres contam como circulação
+   * na área, mas não como corredor logístico. */
   comprimentoCorredoresM: number
   qtdAreas: number
   qtdEtapasFluxo: number
+
+  // --- Derivadas do modelo operacional. `undefined` quando não há dado suficiente: uma métrica
+  // ausente é informação; uma métrica inventada é ruído. ---
+
+  qtdConexoesFluxo: number
+  /** Etapas sem nenhuma conexão de entrada ou saída. */
+  qtdEtapasIsoladas: number
+  /**
+   * Soma das distâncias entre as áreas vinculadas de etapas conectadas — o deslocamento que a
+   * operação percorre por ciclo, medido no espaço real. `undefined` quando nenhuma conexão tem
+   * as duas pontas vinculadas a objetos do Layout.
+   */
+  distanciaFluxoM?: number
+  /**
+   * Capacidade da etapa mais restritiva entre as que declaram vazão na mesma unidade — o teto
+   * do fluxo. `undefined` quando não há etapas comparáveis o bastante para afirmar isso.
+   */
+  capacidadeGargalo?: { valor: number; unidade: string }
 }
 
 /** Exported for reuse by spatialRules.ts (e.g. "área operacional sobreposta" / corridor-blocking
@@ -38,6 +62,7 @@ export function computeProjectMetrics(
   flowNodes: FlowNode[],
   envWidthM: number,
   envHeightM: number,
+  flowConnections: FlowConnection[] = [],
 ): ProjectMetrics {
   let areaArmazenagemM2 = 0
   let areaOperacionalM2 = 0
@@ -70,6 +95,7 @@ export function computeProjectMetrics(
   }
 
   return {
+    ...computeFlowMetrics(objects, flowNodes, flowConnections),
     areaTotalM2: envWidthM * envHeightM,
     areaArmazenagemM2,
     areaOperacionalM2,
@@ -80,5 +106,54 @@ export function computeProjectMetrics(
     comprimentoCorredoresM,
     qtdAreas,
     qtdEtapasFluxo: flowNodes.length,
+  }
+}
+
+/** Parte derivada do Fluxo — separada porque não depende de área nem de ambiente. */
+function computeFlowMetrics(
+  objects: LayoutObject[],
+  flowNodes: FlowNode[],
+  flowConnections: FlowConnection[],
+): Pick<ProjectMetrics, 'qtdConexoesFluxo' | 'qtdEtapasIsoladas' | 'distanciaFluxoM' | 'capacidadeGargalo'> {
+  const connected = new Set<string>()
+  for (const c of flowConnections) {
+    connected.add(c.fromNodeId)
+    connected.add(c.toNodeId)
+  }
+
+  const objectsById = new Map(objects.map((o) => [o.id, o]))
+  const nodesById = new Map(flowNodes.map((n) => [n.id, n]))
+
+  let distanciaFluxoM: number | undefined
+  for (const connection of flowConnections) {
+    const from = nodesById.get(connection.fromNodeId)
+    const to = nodesById.get(connection.toNodeId)
+    const fromObject = from?.linkedObjectId ? objectsById.get(from.linkedObjectId) : undefined
+    const toObject = to?.linkedObjectId ? objectsById.get(to.linkedObjectId) : undefined
+    if (!fromObject || !toObject) continue
+    const a = getCenter(fromObject)
+    const b = getCenter(toObject)
+    distanciaFluxoM = (distanciaFluxoM ?? 0) + Math.hypot(a.x - b.x, a.y - b.y) / 100
+  }
+
+  // Gargalo: menor vazão entre as etapas que declaram capacidade em unidade de fluxo. Só afirma
+  // algo quando há pelo menos duas etapas comparáveis — com uma só, "gargalo" não significa nada.
+  const throughputs = flowNodes
+    .filter((n) => n.capacity !== undefined && n.capacity > 0 && n.capacityUnit?.endsWith('/h'))
+    .map((n) => ({ valor: n.capacity as number, unidade: n.capacityUnit as string }))
+  const byUnit = new Map<string, number[]>()
+  for (const t of throughputs) byUnit.set(t.unidade, [...(byUnit.get(t.unidade) ?? []), t.valor])
+  let capacidadeGargalo: { valor: number; unidade: string } | undefined
+  for (const [unidade, valores] of byUnit) {
+    if (valores.length < 2) continue
+    const menor = Math.min(...valores)
+    if (!capacidadeGargalo || menor < capacidadeGargalo.valor) capacidadeGargalo = { valor: menor, unidade }
+  }
+
+  return {
+    qtdConexoesFluxo: flowConnections.length,
+    qtdEtapasIsoladas: flowNodes.filter((n) => !connected.has(n.id)).length,
+    distanciaFluxoM: distanciaFluxoM === undefined ? undefined : Math.round(distanciaFluxoM * 10) / 10,
+    capacidadeGargalo,
   }
 }
