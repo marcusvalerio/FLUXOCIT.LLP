@@ -1,4 +1,11 @@
-import { useMemo, useState, type DragEvent as ReactDragEvent } from 'react'
+import {
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent as ReactDragEvent,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 import { Search, X } from 'lucide-react'
 import {
   CATEGORY_LABELS,
@@ -8,6 +15,7 @@ import {
 } from '../objects/catalog'
 import { ObjectThumbnail } from '../objects/ObjectThumbnail'
 import { LIBRARY_DND_MIME } from './dragAndDrop'
+import { createInsertGestureGuard } from './insertGesture'
 import { searchCatalog } from './search'
 import type { ObjectTypeDefinition } from '../objects/types'
 import type { ObjectTypeKey } from '../../../types/layout'
@@ -34,24 +42,42 @@ function LibraryItem({
   onPick: (objectType: ObjectTypeKey) => void
 }) {
   const [dragging, setDragging] = useState(false)
+  const gesture = useRef(createInsertGestureGuard()).current
 
   // Arrastar até a prancheta insere no ponto solto; o clique/toque insere no centro da viewport
   // (único caminho no toque, onde a API nativa de drag não existe). Ver library-panel/dragAndDrop.
-  const dragProps = {
+  //
+  // Os dois caminhos criam objeto, então o gesto que disparou um não pode disparar o outro: o
+  // guardião em insertGesture.ts responde "esta ativação é do mesmo gesto?" e só a primeira passa.
+  const interactionProps = {
     draggable: true,
+    onPointerDown: (e: ReactPointerEvent<HTMLButtonElement>) => {
+      gesture.beginGesture(e.pointerType)
+    },
     onDragStart: (e: ReactDragEvent<HTMLButtonElement>) => {
+      // No toque o arrasto nativo não tem para onde levar — a prancheta fica atrás da gaveta — e
+      // habilitá-lo só expõe o dedo ao fluxo de drop. Cancelado aqui, o toque segue sendo toque
+      // (e a rolagem da gaveta continua intacta).
+      if (gesture.isTouchGesture()) {
+        e.preventDefault()
+        return
+      }
+      gesture.markAsDrag()
       e.dataTransfer.setData(LIBRARY_DND_MIME, def.key)
       e.dataTransfer.effectAllowed = 'copy'
       setDragging(true)
     },
     onDragEnd: () => setDragging(false),
+    onClick: (e: ReactMouseEvent<HTMLButtonElement>) => {
+      if (!gesture.claimActivation(e.detail)) return
+      onPick(def.key)
+    },
   }
 
   if (variant === 'grid') {
     return (
       <button
-        {...dragProps}
-        onClick={() => onPick(def.key)}
+        {...interactionProps}
         aria-pressed={armed}
         className={`group flex flex-col overflow-hidden rounded-xl border bg-surface text-left transition-[border-color,box-shadow,transform] duration-150 ease-out hover:border-primary/50 hover:shadow-sm active:scale-[0.98] ${
           armed ? 'border-primary ring-1 ring-primary/30' : 'border-border'
@@ -72,8 +98,7 @@ function LibraryItem({
 
   return (
     <button
-      {...dragProps}
-      onClick={() => onPick(def.key)}
+      {...interactionProps}
       aria-pressed={armed}
       className={`group flex w-full items-center gap-3 rounded-xl border px-2 py-2 text-left transition-[background-color,border-color,transform] duration-150 ease-out hover:bg-surface-alt/60 active:scale-[0.99] ${
         armed ? 'border-primary bg-primary/5' : 'border-transparent hover:border-border'
