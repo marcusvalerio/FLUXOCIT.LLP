@@ -1,4 +1,12 @@
 import type { ObjectTypeKey } from '../../../types/layout'
+import {
+  AREA_TYPES,
+  CIRCULATION_TYPES,
+  LINEAR_TYPES,
+  MOBILE_EQUIPMENT_TYPES,
+  STORAGE_TYPES,
+  UNIT_LOAD_TYPES,
+} from '../../../shared/lib/logisticsTypes'
 
 /**
  * Papel logístico de cada tipo de objeto — a fonte única de "o que esta coisa é" para o resto
@@ -6,8 +14,8 @@ import type { ObjectTypeKey } from '../../../types/layout'
  *
  * A categoria do catálogo diz onde o objeto aparece na biblioteca; o papel diz como ele se
  * comporta: o que alonga em vez de engrossar, o que assenta numa estrutura, o que circula por um
- * corredor. Antes esse conhecimento vivia espalhado (um conjunto em `capabilities`, outro no snap
- * logístico) e nada garantia que os dois concordassem.
+ * corredor. Os grupos semânticos vivem em `shared/lib/logisticsTypes.ts` para que métricas e regras
+ * espaciais usem exatamente o mesmo vocabulário.
  */
 export type ObjectRole =
   /** Tem eixo e espessura característica: parede, corredor, faixa, rota. */
@@ -25,56 +33,7 @@ export type ObjectRole =
   /** Estrutura fixa e demais objetos. */
   | 'structure'
 
-export const LINEAR_TYPES: ReadonlySet<ObjectTypeKey> = new Set<ObjectTypeKey>([
-  'wall',
-  'corridor',
-  'traffic-lane',
-  'pedestrian-lane',
-  'flow-route',
-])
-
-export const CIRCULATION_TYPES: ReadonlySet<ObjectTypeKey> = new Set<ObjectTypeKey>([
-  'corridor',
-  'traffic-lane',
-  'pedestrian-lane',
-  'flow-route',
-])
-
-export const STORAGE_TYPES: ReadonlySet<ObjectTypeKey> = new Set<ObjectTypeKey>([
-  'rack',
-  'shelf',
-  'storage-block',
-  'drive-in',
-  'push-back',
-  'flow-rack',
-  'cantilever',
-])
-
-export const UNIT_LOAD_TYPES: ReadonlySet<ObjectTypeKey> = new Set<ObjectTypeKey>([
-  'pallet',
-  'box',
-  'container',
-  'cage-pallet',
-])
-
-export const MOBILE_EQUIPMENT_TYPES: ReadonlySet<ObjectTypeKey> = new Set<ObjectTypeKey>([
-  'forklift',
-  'reach-truck',
-  'pallet-jack',
-  'order-picker',
-  'tug',
-  'platform-cart',
-])
-
-const AREA_TYPES: ReadonlySet<ObjectTypeKey> = new Set<ObjectTypeKey>([
-  'area',
-  'area-picking',
-  'area-staging',
-  'area-inspection',
-  'area-shipping',
-  'area-receiving',
-  'safety-zone',
-])
+export { AREA_TYPES, CIRCULATION_TYPES, LINEAR_TYPES, MOBILE_EQUIPMENT_TYPES, STORAGE_TYPES, UNIT_LOAD_TYPES }
 
 /** Um papel por tipo, na ordem em que os papéis são mais específicos. */
 export function getObjectRole(objectType: ObjectTypeKey): ObjectRole {

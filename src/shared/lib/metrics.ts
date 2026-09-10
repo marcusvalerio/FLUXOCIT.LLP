@@ -1,4 +1,5 @@
 import { getCenter } from './geometry'
+import { AREA_TYPES, CIRCULATION_TYPES } from './logisticsTypes'
 import type { LayoutObject } from '../../types/layout'
 import type { FlowConnection, FlowNode } from '../../types/flow'
 
@@ -37,18 +38,6 @@ export interface ProjectMetrics {
    */
   capacidadeGargalo?: { valor: number; unidade: string }
 }
-
-/** Exported for reuse by spatialRules.ts (e.g. "área operacional sobreposta" / corridor-blocking
- * checks need the same type groupings as the metrics they're derived from). */
-export const CIRCULATION_TYPES = new Set(['corridor', 'traffic-lane', 'pedestrian-lane', 'intersection'])
-export const AREA_TYPES = new Set([
-  'area',
-  'area-picking',
-  'area-staging',
-  'area-inspection',
-  'area-shipping',
-  'area-receiving',
-])
 
 function footprintM2(o: LayoutObject): number {
   return (o.width * o.length) / 10000
