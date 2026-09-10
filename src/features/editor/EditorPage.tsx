@@ -312,6 +312,18 @@ export function EditorPage() {
         return
       }
 
+      // Desfazer/refazer valem nas duas pranchetas: o histórico é do projeto (ver useEditorStore).
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        undo()
+        return
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
+        e.preventDefault()
+        redo()
+        return
+      }
+
       if (board === 'flow') {
         if ((e.key === 'Delete' || e.key === 'Backspace') && selectedFlowNodeId) {
           e.preventDefault()
@@ -340,13 +352,7 @@ export function EditorPage() {
         }
       }
 
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
-        e.preventDefault()
-        undo()
-      } else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
-        e.preventDefault()
-        redo()
-      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.length > 0) {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.length > 0) {
         e.preventDefault()
         deleteSelected()
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd' && selectedIds.length > 0) {
@@ -440,7 +446,7 @@ export function EditorPage() {
 
         {/* Ações */}
         <div className="flex min-w-0 flex-1 items-center justify-end gap-1 sm:gap-1.5">
-          {board === 'layout' && (
+          {(
             <div className="hidden items-center gap-0.5 sm:flex">
               <IconButton label="Desfazer" size="sm" tooltip tooltipSide="bottom" disabled={!canUndo} onClick={undo}>
                 <Undo2 size={18} />
@@ -796,6 +802,12 @@ export function EditorPage() {
             }}
           >
             <Plus size={22} />
+          </IconButton>
+          <IconButton label="Desfazer" disabled={!canUndo} onClick={undo}>
+            <Undo2 size={22} />
+          </IconButton>
+          <IconButton label="Refazer" disabled={!canRedo} onClick={redo}>
+            <Redo2 size={22} />
           </IconButton>
           {selectedFlowNodeId && (
             <>
