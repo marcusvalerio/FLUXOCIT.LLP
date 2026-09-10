@@ -100,6 +100,18 @@ body,
   height: 100%;
 }
 
+html,
+body {
+  /* This app never has a legitimate page-level scroll — every screen is a fixed-height shell
+   * (`h-dvh`) with its own internal scroll regions (canvas, BottomSheet lists, panels). Without
+   * this, an unhandled/edge-of-scroll touchmove (e.g. reaching the top or bottom of a bottom
+   * sheet's list) can chain into a rubber-band scroll/bounce of the document itself on iOS
+   * Safari, which is what made a gesture that started inside a modal appear to move the page
+   * behind it. `overscroll-behavior: none` disables that chaining unconditionally, not just
+   * while a modal happens to be open — there's nothing here that should ever scroll anyway. */
+  overscroll-behavior: none;
+}
+
 body {
   margin: 0;
   font-family: var(--font-sans);
