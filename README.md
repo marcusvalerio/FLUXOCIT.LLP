@@ -1,4 +1,25 @@
-# FluxoCit
+# ARGUS.LLP — Logistics Planning & Intelligence
+
+> Antes chamado FluxoCit.LLP. Mesmo produto, mesmo repositório, mesmo
+> histórico — o nome mudou junto com o posicionamento: de "ferramenta
+> para desenhar um galpão" para **plataforma que planeja o espaço e
+> entende a operação que acontece nele**.
+
+O ARGUS.LLP é organizado em camadas:
+
+```
+LAYOUT 2D        planejamento espacial (o núcleo, hoje)
+    ↓
+FLOW             modelo operacional
+    ↓
+INTELLIGENCE     análise e alertas sobre layout + fluxo
+    ↓
+SIMULATION       simulação operacional (camada futura, separada do editor 2D)
+```
+
+O planejamento é e continua **100% 2D**: a futura simulação será uma
+camada independente de visualização, nunca uma conversão do editor em
+um editor 3D.
 
 Ferramenta de planejamento logístico em **2D**, organizada em torno de
 **LAYOUT + FLUXO**: a Prancheta de Layout responde "onde cada coisa

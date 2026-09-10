@@ -2,6 +2,7 @@ import { create } from 'zustand'
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
+/** Mantida do nome anterior — ver LocalLayoutRepository: chave de armazenamento não é branding. */
 const STORAGE_KEY = 'fluxocit:theme'
 
 function isThemeMode(value: string | null): value is ThemeMode {

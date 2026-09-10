@@ -1,4 +1,4 @@
-# FluxoCit — Design System
+# ARGUS.LLP — Design System
 
 Referência de implementação: Tailwind CSS (tokens abaixo mapeiam para
 `tailwind.config` — cores customizadas, escala de espaçamento padrão do
@@ -6,7 +6,7 @@ Tailwind, fontes). Ver `docs/UX.md` para diretrizes de interação.
 
 ## 1. Identidade visual
 
-FluxoCit é uma ferramenta técnica e profissional — a interface deve
+ARGUS.LLP é uma ferramenta técnica e profissional — a interface deve
 transmitir precisão e clareza, não decoração. Referência de tom:
 software de engenharia/planejamento, não um app de consumo lúdico.
 

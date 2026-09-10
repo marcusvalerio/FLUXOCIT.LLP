@@ -1,11 +1,11 @@
-# FluxoCit — Arquitetura
+# ARGUS.LLP — Arquitetura
 
 Ver também `docs/TECH_STACK.md` (escolhas de tecnologia e justificativa)
 e `docs/DATABASE.md` (modelo de dados).
 
 ## 1. Visão geral
 
-FluxoCit é uma aplicação **web SPA** (Single Page Application) escrita em
+ARGUS.LLP é uma aplicação **web SPA** (Single Page Application) escrita em
 React + TypeScript, com o **editor 2D como núcleo do produto**. O
 backend (Fase 9) é um Worker próprio na Cloudflare — **Cloudflare
 Workers + D1 + Hono**, sem Supabase — acessado pelo frontend via HTTP

@@ -8,6 +8,7 @@ import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { Panel } from '../../shared/ui/Panel'
 import { IconButton } from '../../shared/ui/IconButton'
 import { ThemeToggle } from '../../shared/ui/ThemeToggle'
+import { BrandMark } from '../../shared/ui/BrandMark'
 import type { LayoutSummary } from '../../types/layout'
 
 /** Ambiente de projetos — a porta de entrada do app. Abre sem conta e sem sessão: os projetos
@@ -100,7 +101,17 @@ export function LayoutsListPage() {
     <div className="min-h-dvh bg-bg">
       <header className="border-b border-border bg-surface">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between gap-2">
-          <h1 className="font-display text-xl font-semibold text-text-primary shrink-0">FluxoCit</h1>
+          <div className="flex min-w-0 shrink-0 items-center gap-2.5">
+            <BrandMark size={26} title={null} className="text-text-primary" />
+            <div className="min-w-0">
+              <h1 className="font-display text-lg font-semibold leading-tight text-text-primary">
+                ARGUS<span className="text-primary">.LLP</span>
+              </h1>
+              <p className="hidden text-[11px] leading-tight text-text-secondary sm:block">
+                Logistics Planning &amp; Intelligence
+              </p>
+            </div>
+          </div>
           <div className="flex items-center gap-2 min-w-0">
             <ThemeToggle />
             <Button variant="primary" onClick={() => setCreating(true)}>

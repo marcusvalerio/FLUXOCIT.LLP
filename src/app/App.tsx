@@ -3,7 +3,7 @@ import { LayoutsListPage } from '../features/layouts/LayoutsListPage'
 import { EditorPage } from '../features/editor/EditorPage'
 
 /**
- * Rotas do FluxoCit — versão local, sem conta.
+ * Rotas do ARGUS.LLP — versão local, sem conta.
  *
  * O app entra direto no ambiente de projetos: `/` redireciona para `/projects`, e tanto
  * `/projects` quanto `/editor/:layoutId` abrem sem qualquer verificação de sessão. Não existe

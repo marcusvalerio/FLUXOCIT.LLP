@@ -1,4 +1,4 @@
-# FluxoCit — Diretrizes de UX
+# ARGUS.LLP — Diretrizes de UX
 
 Complementa `docs/DESIGN_SYSTEM.md` (tokens visuais) e
 `docs/USER_FLOWS.md` (fluxos). Este documento foca em **como o editor
@@ -18,7 +18,7 @@ irreversíveis fora do canvas (excluir layout inteiro).
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ FluxoCit.LLP │ ← │ Projeto        [ Layout | Fluxo ]   ↶ ↷ Salvar ⋮│
+│ ARGUS.LLP │ ← │ Projeto        [ Layout | Fluxo ]   ↶ ↷ Salvar ⋮│
 │                    status de salvamento                            │
 ├────────────┬──────────────────────────────────┬──────────────────┤
 │ Biblioteca │  [+ − ⤢ ⌖]                        │ Propriedades │    │

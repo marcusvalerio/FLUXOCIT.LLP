@@ -3,6 +3,9 @@ import type { Layout, LayoutObject, LayoutSummary, NewLayoutInput } from '../../
 import type { FlowConnection, FlowNode } from '../../types/flow'
 import type { LayoutRepository } from './LayoutRepository'
 
+/** Chave mantida do nome anterior do produto de propósito: renomeá-la órfã os projetos que já
+ * existem no navegador de quem usa o ARGUS hoje. O nome do produto é assunto de interface, não
+ * de formato de armazenamento. */
 const STORAGE_KEY = 'fluxocit:layouts'
 const LOCAL_ORG_ID = 'local'
 

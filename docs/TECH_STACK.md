@@ -1,4 +1,4 @@
-# FluxoCit — Stack Tecnológica
+# ARGUS.LLP — Stack Tecnológica
 
 > Decisões técnicas de baixo risco assumidas com autonomia, conforme
 > autorizado no prompt mestre. Onde há dependência de credencial/conta

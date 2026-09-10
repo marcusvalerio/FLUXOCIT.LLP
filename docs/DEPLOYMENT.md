@@ -1,4 +1,4 @@
-# FluxoCit — Deploy
+# ARGUS.LLP — Deploy
 
 > **Versão atual (Fase 10): o frontend é publicável sozinho.** Os
 > projetos ficam no dispositivo (`localStorage`), sem conta e sem
@@ -132,7 +132,7 @@ Passos:
    domínio verificado:
    ```toml
    [vars]
-   EMAIL_FROM_NAME = "FluxoCit"
+   EMAIL_FROM_NAME = "ARGUS.LLP"
    EMAIL_FROM_ADDRESS = "no-reply@SEU-DOMINIO-VERIFICADO"
    ```
 6. Publique de novo (`npx wrangler deploy`) para os `[vars]` atualizados

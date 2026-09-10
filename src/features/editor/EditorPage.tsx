@@ -44,6 +44,7 @@ import { IconButton } from '../../shared/ui/IconButton'
 import { SegmentedControl } from '../../shared/ui/SegmentedControl'
 import { ThemeToggle } from '../../shared/ui/ThemeToggle'
 import { BottomSheet } from '../../shared/ui/BottomSheet'
+import { BrandMark } from '../../shared/ui/BrandMark'
 import type { ObjectTypeKey } from '../../types/layout'
 import type { FlowNodeType } from '../../types/flow'
 
@@ -390,8 +391,11 @@ export function EditorPage() {
       <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-surface px-2 sm:px-3">
         {/* Identidade + projeto */}
         <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2.5">
-          <span className="hidden shrink-0 select-none font-display text-[15px] font-semibold tracking-tight text-text-primary lg:inline">
-            FluxoCit<span className="text-primary">.LLP</span>
+          <span className="hidden shrink-0 select-none items-center gap-2 lg:inline-flex">
+            <BrandMark size={22} title={null} className="text-text-primary" />
+            <span className="font-display text-[15px] font-semibold tracking-tight text-text-primary">
+              ARGUS<span className="text-primary">.LLP</span>
+            </span>
           </span>
           <span aria-hidden="true" className="hidden h-5 w-px bg-border lg:block" />
           <IconButton label="Voltar aos projetos" size="sm" tooltip tooltipSide="bottom" onClick={() => navigate('/projects')}>
