@@ -39,3 +39,12 @@ export interface SessionUser {
   email: string
   mustChangePassword: boolean
 }
+
+export type ProjectRole = 'owner' | 'editor'
+
+export interface ProjectMemberRow {
+  project_id: string
+  user_id: string
+  role: ProjectRole
+  created_at: string
+}
