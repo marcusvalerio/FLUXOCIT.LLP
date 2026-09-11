@@ -1,5 +1,5 @@
 import { apiFetch } from './apiClient'
-import type { Layout, LayoutObject, LayoutSummary, NewLayoutInput } from '../../types/layout'
+import type { Layout, LayoutObject, LayoutSummary, NewLayoutInput, ProjectRole } from '../../types/layout'
 import type { FlowConnection, FlowNode } from '../../types/flow'
 import type { LayoutRepository } from './LayoutRepository'
 
@@ -9,6 +9,8 @@ interface ApiProjectSummary {
   description: string | null
   createdAt: string
   updatedAt: string
+  role: ProjectRole
+  ownerEmail: string
 }
 
 interface ApiProjectFull extends ApiProjectSummary {
@@ -33,6 +35,8 @@ function toLayoutSummary(p: ApiProjectSummary, userId: string): LayoutSummary {
     description: p.description ?? undefined,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
+    role: p.role,
+    ownerEmail: p.ownerEmail,
   }
 }
 

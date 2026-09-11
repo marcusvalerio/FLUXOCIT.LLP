@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Copy, LayoutGrid, LogOut, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Copy, LayoutGrid, LogOut, Pencil, Plus, Share2, Trash2, Users } from 'lucide-react'
 import { layoutRepository } from '../../shared/data/repository'
 import { isAccountModeEnabled } from '../../shared/data/authMode'
 import { useAuthStore } from '../auth/state/useAuthStore'
 import { DEFAULT_ENV_HEIGHT_M, DEFAULT_ENV_WIDTH_M } from '../editor/state/useEditorStore'
+import { SharePanel } from '../sharing/SharePanel'
 import { Button } from '../../shared/ui/Button'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { Panel } from '../../shared/ui/Panel'
@@ -33,6 +34,10 @@ export function LayoutsListPage() {
   const [renameValue, setRenameValue] = useState('')
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [sharingLayout, setSharingLayout] = useState<LayoutSummary | null>(null)
+
+  const myLayouts = layouts.filter((l) => l.role === 'owner')
+  const sharedLayouts = layouts.filter((l) => l.role !== 'owner')
 
   const refresh = useCallback(async function refresh() {
     setLoading(true)
@@ -223,20 +228,20 @@ export function LayoutsListPage() {
           </div>
         )}
 
-        {!loading && !loadError && layouts.length === 0 && !creating && (
+        {!loading && !loadError && myLayouts.length === 0 && !creating && (
           <Panel className="p-10 flex flex-col items-center text-center gap-3">
             <LayoutGrid size={40} className="text-text-disabled" />
-            <p className="text-text-secondary">Nenhum projeto criado ainda.</p>
+            <p className="text-text-secondary">Seu próximo projeto começa aqui.</p>
             <Button variant="primary" onClick={() => setCreating(true)}>
               <Plus size={18} />
-              Criar novo projeto
+              Criar projeto
             </Button>
           </Panel>
         )}
 
-        {!loading && !loadError && layouts.length > 0 && (
+        {!loading && !loadError && myLayouts.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            {layouts.map((layout) => (
+            {myLayouts.map((layout) => (
               <Panel key={layout.id} className={`p-4 flex flex-col gap-3 ${busyId === layout.id ? 'opacity-60' : ''}`}>
                 <button
                   onClick={() => navigate(`/editor/${layout.id}`)}
@@ -271,6 +276,18 @@ export function LayoutsListPage() {
                   </p>
                 </button>
                 <div className="flex justify-end gap-1">
+                  {accountMode && (
+                    <IconButton
+                      label="Compartilhar"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setSharingLayout(layout)
+                      }}
+                      disabled={busyId === layout.id}
+                    >
+                      <Share2 size={16} />
+                    </IconButton>
+                  )}
                   <IconButton
                     label="Renomear"
                     onClick={(e) => {
@@ -306,6 +323,42 @@ export function LayoutsListPage() {
             ))}
           </div>
         )}
+
+        {/* "Compartilhados comigo" só existe no modo conta (sharing não tem sentido sem outra
+            pessoa) e só aparece quando há algo a mostrar — ver PARTE 5 do briefing: discreto,
+            sem inflar a tela quando ninguém compartilhou nada ainda. */}
+        {accountMode && !loading && !loadError && sharedLayouts.length > 0 && (
+          <div className="mt-8">
+            <h2 className="font-heading text-lg font-semibold text-text-primary mb-4 flex items-center gap-2">
+              <Users size={18} className="text-text-secondary" />
+              Compartilhados comigo
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              {sharedLayouts.map((layout) => (
+                <button
+                  key={layout.id}
+                  onClick={() => navigate(`/editor/${layout.id}`)}
+                  className="text-left"
+                >
+                  <Panel className="p-4 flex flex-col gap-3 hover:border-border-strong transition-colors">
+                    <div className="aspect-video rounded-md bg-surface-alt border border-border flex items-center justify-center">
+                      <LayoutGrid size={28} className="text-text-disabled" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-text-primary truncate">{layout.name}</p>
+                      <p className="text-xs text-text-secondary mt-0.5 truncate">
+                        {layout.ownerEmail} · Editor
+                      </p>
+                      <p className="text-xs text-text-secondary mt-1">
+                        Atualizado em {new Date(layout.updatedAt).toLocaleDateString('pt-BR')}
+                      </p>
+                    </div>
+                  </Panel>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </main>
 
       {pendingDeleteId && (
@@ -315,6 +368,14 @@ export function LayoutsListPage() {
           confirmLabel="Excluir"
           onConfirm={() => handleDelete(pendingDeleteId)}
           onCancel={() => setPendingDeleteId(null)}
+        />
+      )}
+
+      {sharingLayout && (
+        <SharePanel
+          projectId={sharingLayout.id}
+          projectName={sharingLayout.name}
+          onClose={() => setSharingLayout(null)}
         />
       )}
     </div>
