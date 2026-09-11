@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { LayoutsListPage } from '../features/layouts/LayoutsListPage'
 import { EditorPage } from '../features/editor/EditorPage'
+import { LandingPage } from '../features/landing/LandingPage'
 import { AuthBootstrap, RedirectIfAuthed, RequireAuth } from '../features/auth/AuthGate'
 import { LoginPage } from '../features/auth/pages/LoginPage'
 import { SignupPage } from '../features/auth/pages/SignupPage'
@@ -24,6 +25,10 @@ function LocalRoutes() {
       {/* Rota antiga (pré-Fase 9) — mantida como redirecionamento silencioso. */}
       <Route path="/layouts" element={<Navigate to="/projects" replace />} />
       <Route path="/editor/:layoutId" element={<EditorPage />} />
+      {/* Landing institucional — página de marca, aberta sem sessão em qualquer modo (ver
+          AccountRoutes abaixo). Não é o destino padrão de `/`: o app continua abrindo direto em
+          `/projects`, preservando o comportamento existente. */}
+      <Route path="/welcome" element={<LandingPage />} />
 
       {/* Qualquer outra rota (inclusive /login e /signup) cai no ambiente de projetos — no modo
           local não existe conta para acessar. */}
@@ -47,6 +52,9 @@ function AccountRoutes() {
     <AuthBootstrap>
       <Routes>
         <Route path="/" element={<Navigate to="/projects" replace />} />
+        {/* Landing institucional — pública, sem RequireAuth (a página em si já direciona "Começar
+            agora" para /signup, que RedirectIfAuthed já trata para quem já tem sessão). */}
+        <Route path="/welcome" element={<LandingPage />} />
 
         <Route
           path="/login"

@@ -237,6 +237,50 @@ body {
   animation: fluxocit-pop-in var(--duration-base) var(--ease-out-soft) both;
 }
 
+/* Scroll-reveal da Landing Page (docs/UX.md § Landing) — cada seção nasce oculta e ganha
+ * `.is-visible` na primeira vez que cruza a viewport (via IntersectionObserver, ver
+ * features/landing/useReveal.ts). Só transform+opacity: nada aqui jamais dispara layout/paint
+ * fora da camada de composição. Sob `prefers-reduced-motion`, a regra global abaixo já reduz toda
+ * `transition-duration` para 1ms — o conteúdo aparece igual, só que sem a animação. */
+.reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition:
+    opacity 700ms var(--ease-out-soft),
+    transform 700ms var(--ease-out-soft);
+}
+
+.reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.reveal-scale {
+  opacity: 0;
+  transform: scale(0.94);
+  transition:
+    opacity 800ms var(--ease-out-soft),
+    transform 800ms var(--ease-out-soft);
+}
+
+.reveal-scale.is-visible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Linha que "se desenha" (Capítulo 03 — Flow): stroke-dashoffset anima de escondida para
+ * completa. O comprimento do traço (~260) é definido para cobrir a maior conexão desenhada nesta
+ * página; SVGs menores simplesmente terminam de desenhar mais cedo. */
+.draw-line {
+  stroke-dasharray: 260;
+  stroke-dashoffset: 260;
+  transition: stroke-dashoffset 900ms var(--ease-out-soft) 200ms;
+}
+
+.draw-line.is-visible {
+  stroke-dashoffset: 0;
+}
+
 /* Foco visível consistente em toda a interface — nunca removido para efeito visual
  * (docs/UX.md § Acessibilidade). */
 :where(button, [role="button"], a, input, select, textarea, [tabindex]):focus-visible {
@@ -284,9 +328,15 @@ body {
     animation: none;
   }
 
+  /* `transition-delay` também precisa zerar aqui, não só a duração — a Landing Page escalona
+   * vários elementos com `transitionDelay` inline (ver features/landing/LandingPage.tsx) para o
+   * efeito de entrada em cascata; sem isto, cada um ainda esperaria seu atraso completo antes de
+   * uma transição de 1ms, então o conteúdo mais atrasado da cascata ficaria invisível por até ~1s
+   * mesmo com o movimento "desligado" — o oposto do que reduced-motion pede. */
   *,
   *::before,
   *::after {
     transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
   }
 }
