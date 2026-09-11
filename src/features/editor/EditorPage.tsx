@@ -19,6 +19,7 @@ import {
   RotateCcw,
   RotateCw,
   Save,
+  Share2,
   Sparkles,
   Trash2,
   TriangleAlert,
@@ -41,6 +42,8 @@ import { FlowPropertiesPanel } from './flow/FlowPropertiesPanel'
 import { useEditorStore } from './state/useEditorStore'
 import { getTool, toolForShortcut } from './tools/toolRegistry'
 import { layoutRepository } from '../../shared/data/repository'
+import { isAccountModeEnabled } from '../../shared/data/authMode'
+import { SharePanel } from '../sharing/SharePanel'
 import { findStorageOverlaps, getBoundsStatus } from '../../shared/lib/spatialRules'
 import { Button } from '../../shared/ui/Button'
 import { IconButton } from '../../shared/ui/IconButton'
@@ -123,6 +126,12 @@ export function EditorPage() {
   const [propertiesCollapsed, setPropertiesCollapsed] = useState(true)
   const [canvasDragging, setCanvasDragging] = useState(false)
   const [flowPropertiesCollapsed, setFlowPropertiesCollapsed] = useState(true)
+  // Só o proprietário vê "Compartilhar" — o Worker também recusa a chamada para quem não for
+  // dono (defesa em profundidade, ver worker/src/routes/projects.ts), isto só evita mostrar uma
+  // ação que sempre falharia para um EDITOR. `null` enquanto o projeto ainda está carregando.
+  const [projectRole, setProjectRole] = useState<'owner' | 'editor' | null>(null)
+  const [sharingOpen, setSharingOpen] = useState(false)
+  const accountMode = isAccountModeEnabled()
 
   const activeTool = useEditorStore((s) => s.activeTool)
   const setActiveTool = useEditorStore((s) => s.setActiveTool)
@@ -223,6 +232,7 @@ export function EditorPage() {
       const layout = await layoutRepository.getLayout(layoutId)
       if (!cancelled && layout) {
         loadLayout(layout)
+        setProjectRole(layout.role)
       }
       if (!cancelled) setLoading(false)
     }
@@ -495,6 +505,22 @@ export function EditorPage() {
                   <Maximize size={16} className="text-text-secondary" />
                   Ajustar à tela
                 </button>
+                {accountMode && projectRole === 'owner' && (
+                  <>
+                    <div aria-hidden="true" className="my-1.5 h-px bg-border" />
+                    <button
+                      role="menuitem"
+                      className={menuItemClass}
+                      onClick={() => {
+                        setMenuOpen(false)
+                        setSharingOpen(true)
+                      }}
+                    >
+                      <Share2 size={16} className="text-text-secondary" />
+                      Compartilhar
+                    </button>
+                  </>
+                )}
                 {board === 'layout' && (
                   <>
                     <button
@@ -957,6 +983,10 @@ export function EditorPage() {
             <FlowPropertiesPanel />
           </BottomSheet>
         </div>
+      )}
+
+      {sharingOpen && layoutId && (
+        <SharePanel projectId={layoutId} projectName={layoutName || 'Projeto'} onClose={() => setSharingOpen(false)} />
       )}
     </div>
   )

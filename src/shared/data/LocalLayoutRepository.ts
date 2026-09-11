@@ -121,6 +121,9 @@ export class LocalLayoutRepository implements LayoutRepository {
         description,
         createdAt,
         updatedAt,
+        // The local (no-account) backend has exactly one user per device — every project it
+        // stores is owned by them, there's no one to share with. See types/layout.ts ProjectRole.
+        role: 'owner' as const,
       }))
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   }
@@ -143,6 +146,7 @@ export class LocalLayoutRepository implements LayoutRepository {
       createdAt: now,
       updatedAt: now,
       objects: [],
+      role: 'owner',
     }
     const layouts = readAll()
     layouts.push(layout)

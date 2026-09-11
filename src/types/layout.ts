@@ -66,6 +66,12 @@ export interface LayoutObject {
   properties: Record<string, unknown>
 }
 
+/** The current user's relationship to a project — see docs/ARCHITECTURE.md § Compartilhamento.
+ * 'owner' can share/manage collaborators/delete; 'editor' can view and edit Layout/Flow but not
+ * administer the project. Always 'owner' in the local (no-account) backend, where every project
+ * belongs to the single on-device user. */
+export type ProjectRole = 'owner' | 'editor'
+
 export interface Layout {
   id: string
   organizationId: string
@@ -83,11 +89,16 @@ export interface Layout {
    * § Fluxo. Optional/absent on layouts saved before this field existed. */
   flowNodes?: import('./flow').FlowNode[]
   flowConnections?: import('./flow').FlowConnection[]
+  /** The signed-in user's role on this project — see ProjectRole. */
+  role: ProjectRole
+  /** E-mail of the project's actual owner — equal to the current user's own e-mail when
+   * `role === 'owner'`, otherwise whoever shared it. Used to label "Compartilhados comigo". */
+  ownerEmail?: string
 }
 
 export type LayoutSummary = Pick<
   Layout,
-  'id' | 'organizationId' | 'name' | 'description' | 'createdAt' | 'updatedAt'
+  'id' | 'organizationId' | 'name' | 'description' | 'createdAt' | 'updatedAt' | 'role' | 'ownerEmail'
 >
 
 export interface NewLayoutInput {

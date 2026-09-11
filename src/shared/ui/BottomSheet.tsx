@@ -66,7 +66,26 @@ export function BottomSheet({
         </div>
         {collapsed ? null : (
           <div className="min-h-0 flex-1 overflow-hidden p-4">
-            <div className="h-full min-h-0 min-w-0 overflow-hidden">{children}</div>
+            {/* The one and only scroll region for every BottomSheet consumer — see docs/UX.md
+             * § BottomSheet. Previously this div was `overflow-hidden`, so any panel whose own
+             * content didn't build its own internal `overflow-y-auto` (most of them didn't) had
+             * no scrollable element at all: content taller than the sheet was simply clipped,
+             * unreachable, with nothing on screen to scroll (confirmed on Métricas, whose
+             * "Alertas" section was cut mid-line with zero way to reach it). Making the wrapper
+             * itself the scroll container fixes every consumer at once, without each one having
+             * to remember to add these properties itself.
+             *
+             * `overscroll-contain` stops the browser from chaining an overscroll at the top/
+             * bottom of this list into a scroll/bounce of the document or (via the compositor)
+             * a re-interpretation of the gesture as a canvas pan — the touch stays "owned" by
+             * this element for the whole gesture, even once it has nothing left to scroll.
+             * `touch-pan-y` (touch-action: pan-y) tells the browser up front that vertical
+             * panning here is this element's own gesture, not a candidate for native horizontal
+             * swipe/other gestures. `-webkit-overflow-scrolling: touch` keeps iOS Safari's
+             * momentum scrolling engaged even for short lists. */}
+            <div className="h-full min-h-0 min-w-0 overflow-y-auto overscroll-contain touch-pan-y scrollbar-slim [-webkit-overflow-scrolling:touch]">
+              {children}
+            </div>
           </div>
         )}
       </div>

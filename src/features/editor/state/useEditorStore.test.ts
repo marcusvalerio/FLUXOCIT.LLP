@@ -12,6 +12,7 @@ function emptyLayout(): Layout {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     objects: [],
+    role: 'owner',
   }
 }
 
