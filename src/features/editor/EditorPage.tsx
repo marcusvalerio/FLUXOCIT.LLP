@@ -38,6 +38,7 @@ import { SelectionToolbar } from './properties-panel/SelectionToolbar'
 import { FlowCanvas, type FlowCanvasHandle } from './flow/FlowCanvas'
 import { FlowLibraryPanel } from './flow/FlowLibraryPanel'
 import { FlowPropertiesPanel } from './flow/FlowPropertiesPanel'
+import { Sim3DView } from './sim3d/Sim3DView'
 import { useEditorStore } from './state/useEditorStore'
 import { getTool, toolForShortcut } from './tools/toolRegistry'
 import { layoutRepository } from '../../shared/data/repository'
@@ -52,12 +53,13 @@ import { OBJECT_CATALOG } from './objects/catalog'
 import type { ObjectTypeKey } from '../../types/layout'
 import type { FlowNodeType } from '../../types/flow'
 
-type Board = 'layout' | 'flow'
+type Board = 'layout' | 'flow' | 'sim3d'
 type SidePanelTab = 'properties' | 'environment' | 'metrics' | 'analysis'
 
 const BOARD_OPTIONS: { value: Board; label: string }[] = [
   { value: 'layout', label: 'Layout' },
   { value: 'flow', label: 'Fluxo' },
+  { value: 'sim3d', label: '3D' },
 ]
 
 const SIDE_PANEL_OPTIONS: { value: SidePanelTab; label: string }[] = [
@@ -316,6 +318,9 @@ export function EditorPage() {
         return
       }
 
+      // A aba 3D é só visualização: nada de desfazer/apagar um projeto que não está à vista.
+      if (board === 'sim3d') return
+
       // Desfazer/refazer valem nas duas pranchetas: o histórico é do projeto (ver useEditorStore).
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
         e.preventDefault()
@@ -467,7 +472,7 @@ export function EditorPage() {
             <span className="hidden sm:inline">{justSaved ? 'Salvo' : 'Salvar'}</span>
           </Button>
 
-          <div className="relative shrink-0" data-editor-menu>
+          <div className={`relative shrink-0 ${board === 'sim3d' ? 'hidden' : ''}`} data-editor-menu>
             <IconButton
               label="Mais ações"
               size="sm"
@@ -483,6 +488,7 @@ export function EditorPage() {
                 role="menu"
                 className="absolute right-0 top-full z-40 mt-1.5 w-60 origin-top-right rounded-xl border border-border bg-surface p-1.5 shadow-lg animate-panel-in"
               >
+                {board !== 'sim3d' && (
                 <button
                   role="menuitem"
                   className={menuItemClass}
@@ -495,6 +501,7 @@ export function EditorPage() {
                   <Maximize size={16} className="text-text-secondary" />
                   Ajustar à tela
                 </button>
+                )}
                 {board === 'layout' && (
                   <>
                     <button
@@ -585,7 +592,9 @@ export function EditorPage() {
 
       <div className="flex min-h-0 flex-1">
         {/* Biblioteca — barra lateral no desktop, gaveta no tablet/mobile */}
-        <aside className="hidden w-[264px] shrink-0 flex-col border-r border-border bg-surface lg:flex">
+        <aside
+          className={`hidden w-[264px] shrink-0 flex-col border-r border-border bg-surface ${board === 'sim3d' ? '' : 'lg:flex'}`}
+        >
           <PanelHeader title={board === 'layout' ? 'Biblioteca' : 'Etapas de processo'}>
             <Layers size={15} className="text-text-disabled" />
           </PanelHeader>
@@ -618,8 +627,10 @@ export function EditorPage() {
                 />
               }
             />
-          ) : (
+          ) : board === 'flow' ? (
             <FlowCanvas registerHandle={registerFlowHandle} />
+          ) : (
+            <Sim3DView />
           )}
           </div>
 
@@ -698,7 +709,7 @@ export function EditorPage() {
           )}
 
           {/* Abrir a biblioteca no tablet, onde a barra lateral não cabe */}
-          <div className="absolute left-3 bottom-3 hidden md:block lg:hidden">
+          <div className={`absolute left-3 bottom-3 hidden ${board === 'sim3d' ? '' : 'md:block'} lg:hidden`}>
             <Button variant="secondary" size="sm" onClick={() => setLibraryOpen(true)} className="shadow-sm">
               <Plus size={16} />
               Biblioteca
@@ -707,7 +718,9 @@ export function EditorPage() {
         </main>
 
         {/* Propriedades / contexto */}
-        <aside className="hidden w-[288px] shrink-0 flex-col border-l border-border bg-surface md:flex xl:w-[312px]">
+        <aside
+          className={`hidden w-[288px] shrink-0 flex-col border-l border-border bg-surface xl:w-[312px] ${board === 'sim3d' ? '' : 'md:flex'}`}
+        >
           {board === 'layout' ? (
             <>
               <div className="flex h-12 shrink-0 items-center border-b border-border px-2">

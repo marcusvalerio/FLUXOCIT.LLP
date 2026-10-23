@@ -14,6 +14,14 @@ completo: `public/simulations/armazem-3d.html`.
 > nada de Three.js em `src/`. Para modelar uma máquina isolada em detalhe, use `machine-skill`;
 > esta skill usa versões simplificadas das máquinas.
 
+## 0. Aba 3D do editor
+
+O editor já tem uma aba **3D** (`src/features/editor/sim3d/Sim3DView.tsx`) que envia o projeto
+aberto por `postMessage` (`{ type: 'argus:project', project }`) ao visualizador genérico
+`public/simulations/projeto-3d.html`. Melhorias que valem para qualquer projeto (novos
+`objectType`, animações das rotas do Fluxo) vão nesse visualizador; simulações sob medida
+com indicadores de operação seguem o exemplo `armazem-3d.html`.
+
 ## 1. Obter o layout
 
 Ordem de preferência:

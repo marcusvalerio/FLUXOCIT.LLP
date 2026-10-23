@@ -107,8 +107,9 @@ um CAD genérico nem um modelador 3D.
   distância mínima).
 - Indicadores e análises quantitativas do layout (ocupação, densidade,
   capacidade).
-- Visualização 3D do layout (explicitamente fora de escopo nesta fase —
-  ver `docs/ARCHITECTURE.md`).
+- Visualização 3D do layout: existe como **aba 3D somente leitura** (visualizador em
+  `public/simulations/projeto-3d.html`, carregado num iframe, fora do bundle do app). O
+  planejamento continua 100% 2D — o 3D nunca edita o projeto.
 - Integração com sistemas de WMS/ERP.
 
 ## 5. Fluxos principais (visão geral)
