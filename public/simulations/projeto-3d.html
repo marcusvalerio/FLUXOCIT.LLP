@@ -120,6 +120,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 
 const STORAGE_KEY = 'argus:3d-project'
 const ROOF_H = 9
@@ -201,6 +202,17 @@ function flushBoxes() {
   root.add(im)
 }
 const woodMat = M('#8B5E34', { roughness: 0.9 })
+// Pallet de madeira com tábuas, tacos e longarinas, numa caixa unitária (-0,5..0,5) para poder
+// ser escalado por instância como a caixa simples era.
+const palletGeo = (() => {
+  const parts = []
+  const add = (x, y, z, sx, sy, sz) => parts.push(new THREE.BoxGeometry(sx, sy, sz).translate(x, y, z))
+  for (const x of [-0.45, 0, 0.45]) add(x, -0.43, 0, 0.12, 0.14, 1)                         // tábuas de fundo
+  for (const x of [-0.45, 0, 0.45]) for (const z of [-0.43, 0, 0.43]) add(x, -0.09, z, 0.12, 0.55, 0.14)   // tacos
+  for (const z of [-0.43, 0, 0.43]) add(0, 0.25, z, 1, 0.16, 0.14)                          // travessas
+  for (let k = 0; k < 7; k++) add(-0.45 + k * 0.15, 0.42, 0, 0.11, 0.16, 1)                 // tábuas do tampo
+  return mergeGeometries(parts)
+})()
 function palletMatrices(p, base, load) {
   _q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), p.rot)
   base.compose(_p.set(p.x, p.y + 0.07, p.z), _q, _s.set(p.w, 0.14, p.d))
@@ -208,7 +220,7 @@ function palletMatrices(p, base, load) {
 }
 function buildPallets() {
   const n = Math.max(1, pallets.length)
-  const base = new THREE.InstancedMesh(unitBox, woodMat, n), load = new THREE.InstancedMesh(unitBox, M('#ffffff', { roughness: 0.75 }), n)
+  const base = new THREE.InstancedMesh(palletGeo, woodMat, n), load = new THREE.InstancedMesh(unitBox, M('#ffffff', { roughness: 0.75 }), n)
   const mb = new THREE.Matrix4(), ml = new THREE.Matrix4()
   pallets.forEach((p, i) => { palletMatrices(p, mb, ml); base.setMatrixAt(i, mb); load.setMatrixAt(i, ml); load.setColorAt(i, _c.set(p.color)) })
   base.count = load.count = pallets.length
@@ -223,7 +235,7 @@ function showInstance(p) {
 }
 function palletMesh(p) {   // origem no centro da base, profundidade ao longo de z local
   const g = new THREE.Group()
-  const b = new THREE.Mesh(unitBox, woodMat); b.scale.set(p.w, 0.14, p.d); b.position.y = 0.07
+  const b = new THREE.Mesh(palletGeo, woodMat); b.scale.set(p.w, 0.14, p.d); b.position.y = 0.07
   const l = new THREE.Mesh(unitBox, M(p.color, { roughness: 0.75 })); l.scale.set(p.w - 0.05, p.lh, p.d - 0.1); l.position.y = 0.14 + p.lh / 2
   b.castShadow = l.castShadow = true; g.add(b, l); return g
 }
@@ -269,6 +281,213 @@ function rackLike(o, f, kind) {
   }
   obstacle(f)
 }
+// ---------------------------------------------------------------- equipamentos detalhados
+// Tela aramada: textura de grade com transparência; as UVs são escaladas pelo tamanho do painel
+// para a malha ter sempre ~5 cm, qualquer que seja o tamanho do objeto.
+const wireTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 64
+  const g = c.getContext('2d'); g.strokeStyle = '#fff'; g.lineWidth = 5
+  g.strokeRect(0, 0, 64, 64)
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4
+  return t
+})()
+const wireMat = new THREE.MeshStandardMaterial({ color: '#cbd5e1', metalness: 0.7, roughness: 0.35, alphaMap: wireTex, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide })
+function wirePanel(f, x, y, z, w, h, rotY, cell = 0.05) {
+  const geo = new THREE.PlaneGeometry(w, h)
+  const uv = geo.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w / cell, uv.getY(i) * h / cell)
+  const m = new THREE.Mesh(geo, wireMat); m.castShadow = true
+  m.matrixAutoUpdate = false
+  m.matrix.copy(f.m).multiply(new THREE.Matrix4().compose(_p.set(x, y + h / 2, z), _q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotY), _s.set(1, 1, 1)))
+  root.add(m)
+}
+// Referencial com o eixo longo em x (para objetos desenhados "em pé" na planta)
+function longFrame(f) {
+  if (f.w >= f.l) return f
+  const m = f.m.clone().multiply(new THREE.Matrix4().makeRotationY(Math.PI / 2))
+  return { ...f, w: f.l, l: f.w, m }
+}
+const STEEL = '#94a3b8', DARK = '#1f2937', YELLOW = '#facc15'
+
+function cagePallet(f, o) {
+  const H = Math.min(+o.properties?.height || 1.0, 2), w = f.w, l = f.l, post = 0.04
+  for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) B(f, x * (w / 2 - 0.06), 0, z * (l / 2 - 0.06), 0.1, 0.12, 0.1, DARK)   // pés
+  B(f, 0, 0.12, 0, w, 0.04, l, '#475569')                                                     // base de aço
+  for (const x of [-0.3, 0, 0.3]) B(f, x * w, 0.16, 0, 0.03, 0.02, l - 0.08, STEEL)            // fundo gradeado
+  const y0 = 0.16, hh = H - y0
+  for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) B(f, x * (w / 2 - post / 2), y0, z * (l / 2 - post / 2), post, hh, post, STEEL)
+  for (const y of [y0, H - 0.03, y0 + hh / 2]) {
+    B(f, 0, y, -l / 2 + 0.015, w, 0.03, 0.03, STEEL); B(f, 0, y, l / 2 - 0.015, w, 0.03, 0.03, STEEL)
+    B(f, -w / 2 + 0.015, y, 0, 0.03, 0.03, l, STEEL); B(f, w / 2 - 0.015, y, 0, 0.03, 0.03, l, STEEL)
+  }
+  wirePanel(f, 0, y0, -l / 2 + 0.015, w - post, hh, 0)
+  wirePanel(f, -w / 2 + 0.015, y0, 0, l - post, hh, Math.PI / 2)
+  wirePanel(f, w / 2 - 0.015, y0, 0, l - post, hh, Math.PI / 2)
+  wirePanel(f, 0, y0 + hh / 2, l / 2 - 0.015, w - post, hh / 2, 0)                            // portinhola (meia altura)
+  B(f, 0, y0 + hh / 2 - 0.03, l / 2 - 0.015, w - post, 0.03, 0.03, YELLOW)                      // trava da portinhola
+  // conteúdo: caixas dentro da gaiola
+  const R = rng(hash(o.id)), n = 2 + Math.floor(R() * 3)
+  for (let k = 0; k < n; k++) {
+    const bx = (R() - 0.5) * (w - 0.45), bz = (R() - 0.5) * (l - 0.45), bh = 0.2 + R() * Math.min(0.4, hh - 0.3)
+    B(f, bx, y0 + 0.02, bz, 0.3 + R() * 0.1, bh, 0.3 + R() * 0.1, PALLET_COLORS[Math.floor(R() * PALLET_COLORS.length)])
+  }
+}
+const CONTAINER_COLORS = ['#c2410c', '#1d4ed8', '#047857', '#b91c1c', '#6b7280', '#0e7490']
+function container(f0, o) {
+  const f = longFrame(f0), L = f.w, Wd = f.l, H = 2.59, col = CONTAINER_COLORS[hash(o.id) % CONTAINER_COLORS.length]
+  const dark = '#27272a', cast = '#a1a1aa'
+  B(f, 0, 0, 0, L, 0.16, Wd, dark)                                              // longarinas inferiores
+  B(f, 0, H - 0.12, 0, L, 0.12, Wd, col)                                        // teto
+  for (const x of [-1, 1]) for (const z of [-1, 1]) {
+    B(f, x * (L / 2 - 0.08), 0, z * (Wd / 2 - 0.08), 0.16, H, 0.16, col)        // colunas de canto
+    for (const y of [0, H - 0.12]) B(f, x * (L / 2 - 0.09), y, z * (Wd / 2 - 0.09), 0.18, 0.12, 0.18, cast)   // cantoneiras de içamento
+  }
+  for (const z of [-1, 1]) {                                                    // laterais corrugadas
+    B(f, 0, 0.16, z * (Wd / 2 - 0.03), L - 0.3, H - 0.28, 0.04, col)
+    const n = Math.floor((L - 0.3) / 0.28)
+    for (let k = 0; k < n; k++) B(f, -L / 2 + 0.15 + (k + 0.5) * (L - 0.3) / n, 0.16, z * (Wd / 2 - 0.005), 0.13, H - 0.28, 0.035, col)
+    B(f, 0, H - 0.2, z * (Wd / 2 - 0.02), L, 0.1, 0.06, col)                     // trilho superior
+  }
+  // fundo corrugado (lado oposto às portas)
+  B(f, -L / 2 + 0.03, 0.16, 0, 0.04, H - 0.28, Wd - 0.3, col)
+  for (let k = 0; k < 6; k++) B(f, -L / 2 + 0.005, 0.16 + (k + 0.5) * (H - 0.28) / 6, 0, 0.035, 0.14, Wd - 0.3, col)
+  // portas: duas folhas com 4 barras de travamento, alças e dobradiças
+  const dx = L / 2 - 0.03
+  B(f, dx, 0.16, 0, 0.05, H - 0.28, Wd - 0.3, col)
+  B(f, dx + 0.03, 0.16, 0, 0.01, H - 0.28, 0.02, dark)                           // fresta entre as folhas
+  for (const zz of [-0.78, -0.42, 0.42, 0.78]) {
+    const z = zz * (Wd - 0.3) / 2
+    B(f, dx + 0.05, 0.2, z, 0.04, H - 0.38, 0.04, cast)                           // barra de travamento
+    B(f, dx + 0.08, 1.05, z + 0.08, 0.04, 0.05, 0.16, dark)                       // alça
+    for (const y of [0.25, H - 0.35]) B(f, dx + 0.05, y, z, 0.08, 0.1, 0.1, dark)  // guias
+  }
+  for (const z of [-1, 1]) for (const y of [0.45, 1.25, 2.05]) B(f, dx + 0.02, y, z * (Wd / 2 - 0.13), 0.05, 0.12, 0.1, dark)   // dobradiças
+  label((o.name || 'Contêiner') + (L > 9 ? ' 40′' : ' 20′'), col, f0.cx, H + 0.4, f0.cz)
+}
+function cardboardBox(f, o) {
+  const h = +o.properties?.height || Math.min(f.w, f.l, 0.8)
+  B(f, 0, 0, 0, f.w, h, f.l, '#c8a97e')
+  B(f, 0, h, 0, f.w * 0.18, 0.006, f.l + 0.004, '#d6c7a1')                     // fita no tampo
+  B(f, 0, h * 0.55, f.l / 2 + 0.002, f.w * 0.18, h * 0.45, 0.004, '#d6c7a1')    // fita descendo pela frente
+  B(f, 0, h * 0.55, -f.l / 2 - 0.002, f.w * 0.18, h * 0.45, 0.004, '#d6c7a1')
+  B(f, -f.w / 4, h * 0.6, f.l / 2 + 0.003, f.w * 0.22, h * 0.18, 0.003, '#f8fafc')   // etiqueta
+}
+function column(f) {
+  const H = ROOF_H, w = f.w, l = f.l, fl = Math.max(0.02, Math.min(w, l) * 0.12)
+  B(f, 0, 0, 0, w + 0.2, 0.03, l + 0.2, '#9ca3af')                              // placa de base
+  B(f, 0, 0, -l / 2 + fl / 2, w, H, fl, '#64748b'); B(f, 0, 0, l / 2 - fl / 2, w, H, fl, '#64748b')   // mesas do perfil H
+  B(f, 0, 0, 0, fl * 0.7, H, l - 2 * fl, '#64748b')                              // alma
+  for (let k = 0; k < 5; k++) B(f, 0, 0.1 + k * 0.22, 0, w + 0.16, 0.11, l + 0.16, k % 2 ? DARK : YELLOW)   // protetor zebrado
+}
+function stairs(f0) {
+  const f = f0, n = Math.max(4, Math.round(f.l / 0.28)), rise = 0.18
+  for (let i = 0; i < n; i++) {
+    const z = -f.l / 2 + (i + 0.5) * f.l / n
+    B(f, 0, (i + 1) * rise - 0.04, z, f.w - 0.1, 0.04, f.l / n + 0.02, '#94a3b8')   // degrau (chapa)
+    B(f, 0, (i + 1) * rise - 0.06, z + f.l / n / 2 - 0.01, f.w - 0.1, 0.02, 0.02, YELLOW)   // borda sinalizada
+  }
+  for (const s of [-1, 1]) {
+    B(f, s * (f.w / 2 - 0.03), 0, 0, 0.06, n * rise, f.l, '#475569')              // longarinas
+    for (let k = 0; k <= 4; k++) { const z = -f.l / 2 + k * f.l / 4; B(f, s * (f.w / 2 - 0.03), (k / 4) * n * rise, z, 0.04, 1.0, 0.04, YELLOW) }
+    const steps = 12
+    for (let k = 0; k < steps; k++) B(f, s * (f.w / 2 - 0.03), 1.0 + ((k + 0.5) / steps) * n * rise, -f.l / 2 + (k + 0.5) * f.l / steps, 0.05, 0.05, f.l / steps + 0.02, YELLOW)   // corrimão
+  }
+}
+function conveyor(f0, o) {
+  const f = longFrame(f0), L = f.w, Wd = f.l, top = 0.8
+  for (const z of [-1, 1]) B(f, 0, top - 0.12, z * (Wd / 2 - 0.03), L, 0.16, 0.05, '#2563EB')   // longarinas laterais
+  const nr = Math.floor(L / 0.1)
+  for (let k = 0; k < nr; k++) B(f, -L / 2 + (k + 0.5) * L / nr, top - 0.06, 0, 0.06, 0.06, Wd - 0.08, '#cbd5e1')   // roletes
+  const legs = Math.max(2, Math.ceil(L / 1.5) + 1)
+  for (let k = 0; k < legs; k++) {
+    const x = -L / 2 + 0.1 + k * (L - 0.2) / (legs - 1)
+    for (const z of [-1, 1]) B(f, x, 0, z * (Wd / 2 - 0.05), 0.05, top - 0.12, 0.05, '#475569')
+    B(f, x, 0.25, 0, 0.04, 0.04, Wd - 0.1, '#475569')                             // travessa
+  }
+  B(f, L / 2 - 0.4, 0.3, Wd / 2 + 0.1, 0.35, 0.3, 0.2, '#334155')               // motor
+}
+function dock(f0, o) {
+  const f = longFrame(f0), L = f.w
+  B(f, 0, 0, 0, L * 0.85, 0.1, Math.max(f.l, 0.3), '#52525b')                   // nivelador
+  for (let k = 0; k < 8; k++) B(f, -L * 0.4 + k * L * 0.8 / 7, 0.1, 0, 0.04, 0.008, Math.max(f.l, 0.3) * 0.9, YELLOW)   // faixas antiderrapantes
+  for (const s of [-1, 1]) {
+    B(f, s * (L / 2 - 0.1), 0.15, 0, 0.18, 0.45, 0.25, DARK)                     // batentes de borracha
+    B(f, s * (L / 2 + 0.05), 0, 0, 0.2, 3.2, 0.3, '#18181b')                      // vedação lateral
+  }
+  B(f, 0, 3.0, 0, L + 0.5, 0.35, 0.3, '#18181b')                                  // vedação superior
+  B(f, L / 2 + 0.35, 1.6, 0, 0.12, 0.3, 0.12, DARK); B(f, L / 2 + 0.35, 1.78, 0.065, 0.06, 0.06, 0.01, '#22c55e')   // semáforo
+  label(o.name || 'Doca', '#2563EB', f0.cx, 3.6, f0.cz)
+}
+function doorOrGate(f0, t) {
+  const f = longFrame(f0), span = f.w, depth = Math.max(f.l, 0.12)
+  if (t === 'gate') {   // portão seccional com painéis horizontais
+    const h = 4.5
+    for (const s of [-1, 1]) B(f, s * (span / 2 - 0.08), 0, 0, 0.16, h, depth, '#475569')
+    B(f, 0, h, 0, span, 0.5, depth + 0.1, '#334155')                              // caixa do rolo
+    const panels = 8
+    for (let k = 0; k < panels; k++) B(f, 0, k * (h / panels) + 0.01, 0, span - 0.2, h / panels - 0.03, 0.05, k === 4 ? '#93c5fd' : '#e2e8f0')
+    for (let k = 0; k < 5; k++) B(f, 0, 0.02 + k * 0.02, 0.04, span - 0.2, 0.01, 0.01, k % 2 ? DARK : YELLOW)
+  } else {              // porta de pedestres: batente, folha com visor e maçaneta
+    const h = 2.1
+    for (const s of [-1, 1]) B(f, s * (span / 2 - 0.04), 0, 0, 0.08, h + 0.08, depth, '#334155')
+    B(f, 0, h, 0, span, 0.08, depth, '#334155')
+    B(f, 0, 0, 0, span - 0.1, h, 0.05, '#16a34a')
+    B(f, 0, 1.3, 0.001, (span - 0.1) * 0.35, 0.5, 0.055, '#bfdbfe')                // visor
+    B(f, span / 2 - 0.2, 1.0, 0.05, 0.12, 0.03, 0.04, '#d4d4d8')                   // maçaneta
+  }
+}
+function table(f, t) {
+  const top = 0.9
+  B(f, 0, top - 0.05, 0, f.w, 0.05, f.l, t === 'packing-table' ? '#e7e5e4' : '#94a3b8')
+  B(f, 0, 0.25, 0, f.w - 0.1, 0.03, f.l - 0.1, '#475569')                         // prateleira inferior
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) B(f, sx * (f.w / 2 - 0.05), 0, sz * (f.l / 2 - 0.05), 0.05, top - 0.05, 0.05, '#475569')
+  if (t === 'packing-table') {
+    B(f, -f.w / 2 + 0.06, top, 0, 0.04, 0.8, 0.04, '#475569')                       // haste do monitor
+    B(f, -f.w / 2 + 0.1, top + 0.55, 0, 0.03, 0.3, 0.45, DARK)                      // monitor
+    B(f, f.w / 4, top, 0, 0.35, 0.25, 0.3, '#c8a97e')                               // caixa sendo embalada
+    B(f, -f.w / 4, top, -f.l / 4, 0.25, 0.08, 0.12, '#e5e7eb')                      // rolo de fita/filme
+  } else for (let k = 0; k < 3; k++) B(f, -f.w / 3 + k * f.w / 3, top, 0, 0.3, 0.12, 0.4, ['#60a5fa', '#f87171', '#fbbf24'][k])   // caixas de triagem
+}
+function scaleModel(f) {
+  B(f, 0, 0, 0, f.w, 0.08, f.l, '#475569')
+  B(f, 0, 0.08, 0, f.w - 0.06, 0.01, f.l - 0.06, '#9ca3af')                         // chapa xadrez
+  B(f, f.w / 2 + 0.15, 0, 0, 0.05, 1.2, 0.05, '#334155')                             // coluna do indicador
+  B(f, f.w / 2 + 0.15, 1.2, 0, 0.08, 0.2, 0.3, DARK); B(f, f.w / 2 + 0.19, 1.27, 0, 0.005, 0.06, 0.18, '#22c55e')   // display
+}
+function stationDevice(f, t) {
+  B(f, 0, 0, 0, Math.min(f.w, 0.4), 0.02, Math.min(f.l, 0.4), '#334155')
+  B(f, 0, 0, 0, 0.05, 1.0, 0.05, '#475569')
+  if (t === 'label-printer') { B(f, 0, 1.0, 0, Math.min(f.w, 0.35), 0.25, Math.min(f.l, 0.3), '#e5e7eb'); B(f, 0, 1.1, Math.min(f.l, 0.3) / 2, 0.1, 0.004, 0.06, '#f8fafc') }
+  else for (let k = 0; k < 3; k++) { B(f, -0.12 + k * 0.12, 1.0, 0, 0.1, 0.06, 0.12, DARK); B(f, -0.12 + k * 0.12, 1.06, 0, 0.06, 0.16, 0.04, '#facc15') }   // coletores na base
+}
+function wheel(f, x, z, r, w) { B(f, x, 0, z, w, r * 2, r * 2, DARK) }
+function smallVehicle(f0, t) {
+  const f = longFrame(f0), L = f.w, Wd = f.l
+  if (t === 'pallet-jack') {
+    for (const z of [-0.18, 0.18]) B(f, -0.15, 0.03, z * Wd / 0.55, L - 0.4, 0.06, 0.16, '#dc2626')   // garfos
+    B(f, L / 2 - 0.3, 0, 0, 0.3, 0.35, Wd * 0.8, '#dc2626')                         // corpo hidráulico
+    B(f, L / 2 - 0.2, 0.35, 0, 0.04, 0.9, 0.04, DARK); B(f, L / 2 - 0.2, 1.25, 0, 0.04, 0.04, 0.3, DARK)   // timão
+    wheel(f, L / 2 - 0.25, 0, 0.1, 0.08)
+  } else if (t === 'platform-cart') {
+    B(f, 0, 0.2, 0, L, 0.04, Wd, '#64748b')
+    for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { B(f, x * (L / 2 - 0.1), 0.1, z * (Wd / 2 - 0.08), 0.05, 0.1, 0.05, DARK); wheel(f, x * (L / 2 - 0.1), z * (Wd / 2 - 0.08), 0.06, 0.04) }
+    B(f, -L / 2 + 0.03, 0.24, 0, 0.04, 0.8, Wd - 0.1, '#334155')                   // alça
+  } else {   // rebocador (tug)
+    B(f, 0, 0.2, 0, L, 0.5, Wd, '#ea580c')
+    B(f, L / 4, 0.7, 0, L / 2.2, 0.08, Wd, '#ea580c')
+    B(f, -L / 8, 0.7, 0, 0.4, 0.35, Wd * 0.6, DARK)                                 // assento
+    B(f, L / 4, 0.78, 0, 0.05, 0.45, 0.05, DARK)                                     // coluna de direção
+    for (const s of [-1, 1]) { for (const x of [-L / 2 + 0.2, L / 2 - 0.25]) wheel(f, x, s * (Wd / 2 - 0.08), 0.2, 0.15) }
+    B(f, -L / 2 - 0.15, 0.25, 0, 0.3, 0.06, 0.08, DARK)                              // engate
+  }
+}
+function wallModel(f0, o) {
+  const f = longFrame(f0), H = +o.properties?.height || 6, T = Math.max(f.l, 0.15)
+  B(f, 0, 0, 0, f.w, H, T, '#d6d3d1')
+  B(f, 0, 0, 0, f.w, 0.3, T + 0.02, '#78716c')                                     // rodapé
+  for (let y = 0.6; y < H; y += 0.6) B(f, 0, y, 0, f.w, 0.01, T + 0.005, '#a8a29e')   // fiadas de bloco
+  for (let x = -f.w / 2 + 3; x < f.w / 2; x += 3) B(f, x, 0, 0, 0.18, H, T + 0.04, '#a8a29e')   // pilaretes
+}
+
 const FLAT = new Set(['area', 'area-picking', 'area-staging', 'area-inspection', 'area-shipping', 'area-receiving', 'corridor', 'traffic-lane',
   'flow-route', 'intersection', 'pedestrian-lane', 'safety-zone', 'directional-arrow', 'dock', 'scale'])
 function objHeight(o, f) {
@@ -336,24 +555,19 @@ function build(project) {
         const h = t === 'container' ? 2.6 : t === 'box' ? Math.min(f.w, f.l) : 1.1
         // pallet solto: pode ser pego, então não vira obstáculo (o garfo precisa entrar nele)
         if (t === 'pallet') { addPallet(f, 0, 0, 0, Math.min(f.w, 1.2), Math.min(f.l, 1.2), 1.0, PALLET_COLORS[hash(o.id) % PALLET_COLORS.length]); break }
-        B(f, 0, 0, 0, f.w, h, f.l, t === 'container' ? '#b45309' : t === 'cage-pallet' ? '#9ca3af' : '#c8a97e')
+        if (t === 'container') container(f, o)
+        else if (t === 'cage-pallet') cagePallet(f, o)
+        else cardboardBox(f, o)
         obstacle(f); break
       }
-      case 'wall': B(f, 0, 0, 0, f.w, +o.properties?.height || 6, f.l, '#cbd5e1'); obstacle(f); break
-      case 'column': B(f, 0, 0, 0, f.w, ROOF_H, f.l, '#a8a29e'); B(f, 0, 0, 0, f.w + 0.04, 1.2, f.l + 0.04, '#facc15'); obstacle(f); break
-      case 'door': case 'gate': {
-        const along = f.w >= f.l, span = Math.max(f.w, f.l), h = t === 'gate' ? 4.5 : 2.4, post = 0.12
-        const c = t === 'gate' ? '#475569' : '#16a34a'
-        for (const s of [-1, 1]) along ? B(f, s * (span / 2 - post / 2), 0, 0, post, h, Math.max(f.l, 0.15), c) : B(f, 0, 0, s * (span / 2 - post / 2), Math.max(f.w, 0.15), h, post, c)
-        along ? B(f, 0, h - 0.15, 0, span, 0.15, Math.max(f.l, 0.15), c) : B(f, 0, h - 0.15, 0, Math.max(f.w, 0.15), 0.15, span, c)
-        break
-      }
-      case 'dock': B(f, 0, 0, 0, f.w, 0.12, f.l, '#57534e'); B(f, 0, 0.12, 0, f.w * 0.9, 0.02, f.l * 0.9, '#facc15'); label(o.name || 'Doca', '#2563EB', f.cx, 1, f.cz); break
-      case 'stairs': { const n = 10; for (let i = 0; i < n; i++) B(f, 0, 0, -f.l / 2 + (i + 0.5) * f.l / n, f.w, (i + 1) * 0.18, f.l / n, '#94a3b8'); obstacle(f); break }
+      case 'wall': wallModel(f, o); obstacle(f); break
+      case 'column': column(f); obstacle(f); break
+      case 'door': case 'gate': doorOrGate(f, t); break
+      case 'dock': dock(f, o); break
+      case 'stairs': stairs(f); obstacle(f); break
       case 'conveyor': {
-        const along = f.w >= f.l, len = Math.max(f.w, f.l), wid = Math.min(f.w, f.l)
-        along ? B(f, 0, 0.7, 0, f.w, 0.1, f.l, '#334155') : B(f, 0, 0.7, 0, f.w, 0.1, f.l, '#334155')
-        for (let k = 0; k <= Math.floor(len / 1.5); k++) { const p = -len / 2 + k * len / Math.max(1, Math.floor(len / 1.5)); along ? B(f, p, 0, 0, 0.06, 0.7, wid * 0.9, '#64748b') : B(f, 0, 0, p, wid * 0.9, 0.7, 0.06, '#64748b') }
+        const along = f.w >= f.l, len = Math.max(f.w, f.l)
+        conveyor(f, o)
         const n = Math.max(1, Math.floor(len / 1.4))
         for (let k = 0; k < n; k++) {
           const m = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.35, 0.45), M(PALLET_COLORS[k % PALLET_COLORS.length])); m.castShadow = true; root.add(m)
@@ -361,17 +575,12 @@ function build(project) {
         }
         obstacle(f); break
       }
-      case 'sorting-bench': case 'packing-table': {
-        B(f, 0, 0.85, 0, f.w, 0.06, f.l, t === 'packing-table' ? '#d6d3d1' : '#94a3b8')
-        for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) B(f, sx * (f.w / 2 - 0.05), 0, sz * (f.l / 2 - 0.05), 0.05, 0.85, 0.05, '#475569')
-        obstacle(f); break
-      }
-      case 'scale': B(f, 0, 0, 0, f.w, 0.1, f.l, '#475569'); break
-      case 'label-printer': case 'rf-scanner': B(f, 0, 0, 0, 0.05, 1.0, 0.05, '#475569'); B(f, 0, 1.0, 0, f.w, Math.min(0.3, f.l), f.l, '#1f2937'); break
+      case 'sorting-bench': case 'packing-table': table(f, t); obstacle(f); break
+      case 'scale': scaleModel(f); break
+      case 'label-printer': case 'rf-scanner': stationDevice(f, t); break
       case 'forklift': case 'reach-truck': case 'order-picker': vehicle(f, t === 'forklift' ? '#f59e0b' : t === 'reach-truck' ? '#2563EB' : '#16a34a', t); break
       case 'pallet-jack': case 'platform-cart': case 'tug':
-        B(f, 0, 0, 0, f.w, t === 'tug' ? 1.1 : 0.2, f.l, t === 'tug' ? '#ea580c' : '#64748b')
-        if (t !== 'tug') B(f, -f.w / 2 + 0.05, 0, 0, 0.06, 1.0, f.l * 0.8, '#1f2937')
+        smallVehicle(f, t)
         obstacle(f); break
       case 'corridor': case 'traffic-lane': case 'flow-route': case 'intersection': {
         floorPlane(f, t === 'flow-route' ? '#2563EB' : '#eab308', t === 'intersection' ? 0.3 : 0.12, 0.014); break
@@ -980,7 +1189,7 @@ renderer.setAnimationLoop(() => {
   }
   renderer.render(scene, camera); labelRenderer.render(scene, camera)
 })
-window.__viewer = { screenOf: (id) => { const i = objInfo.find((q) => q.id === id); if (!i) return null; const v = new THREE.Vector3(i.f.cx, i.h / 2, i.f.cz).project(camera); return { x: (v.x + 1) / 2 * innerWidth, y: (1 - v.y) / 2 * innerHeight } }, selected: () => selectedId, load, setMode, stats: () => stats, agents: () => agents, user, keys, pallets: () => pallets, slots: () => slots, carrying: () => carrying, hint: () => hint }
+window.__viewer = { cam: (c, t) => { camera.position.set(...c); controls.target.set(...t); controls.update() }, screenOf: (id) => { const i = objInfo.find((q) => q.id === id); if (!i) return null; const v = new THREE.Vector3(i.f.cx, i.h / 2, i.f.cz).project(camera); return { x: (v.x + 1) / 2 * innerWidth, y: (1 - v.y) / 2 * innerHeight } }, selected: () => selectedId, load, setMode, stats: () => stats, agents: () => agents, user, keys, pallets: () => pallets, slots: () => slots, carrying: () => carrying, hint: () => hint }
 </script>
 </body>
 </html>
