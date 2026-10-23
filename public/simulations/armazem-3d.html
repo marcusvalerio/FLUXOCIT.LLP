@@ -1,0 +1,1093 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Armazém 3D — ARGUS.LLP</title>
+<style>
+  :root {
+    --bg: #0f172a; --panel: rgba(15, 23, 42, .86); --line: rgba(148, 163, 184, .25);
+    --text: #e2e8f0; --muted: #94a3b8; --accent: #2563EB; --warn: #f59e0b; --danger: #dc2626; --ok: #10b981;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+    font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  #app { position: fixed; inset: 0; }
+  #app canvas { display: block; touch-action: none; }
+  #labels { position: fixed; inset: 0; pointer-events: none; }
+  .lbl { padding: 2px 8px; border-radius: 999px; color: #fff; font-size: 11px; font-weight: 600; white-space: nowrap;
+    box-shadow: 0 1px 4px rgba(0,0,0,.35); }
+  .lbl.hot { outline: 2px solid #fff; animation: pulse 1s infinite alternate; }
+  @keyframes pulse { to { transform: scale(1.12); } }
+
+  header { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; padding: 4px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; z-index: 5; max-width: calc(100vw - 16px); overflow-x: auto; }
+  header button { white-space: nowrap; }
+  button { background: rgba(51, 65, 85, .7); color: var(--text); border: 1px solid var(--line); border-radius: 8px;
+    padding: 6px 10px; font: inherit; cursor: pointer; }
+  button:hover { background: rgba(71, 85, 105, .9); }
+  button.on { background: var(--accent); border-color: var(--accent); }
+
+  #panel { position: fixed; top: 60px; left: 8px; width: 300px; max-height: calc(100vh - 70px); overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; z-index: 4; }
+  #panel h1 { font-size: 15px; margin: 0 0 2px; }
+  #panel h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 14px 0 6px; }
+  #panel .sub { color: var(--muted); font-size: 12px; }
+  #panel a { color: #93c5fd; }
+  .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .ctl { display: grid; grid-template-columns: 1fr 70px 34px; gap: 6px; align-items: center; margin: 4px 0; }
+  .ctl input { width: 100%; }
+  .ctl b { text-align: right; }
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .tile { background: rgba(30, 41, 59, .8); border-radius: 8px; padding: 6px; }
+  .tile small { display: block; color: var(--muted); font-size: 10px; }
+  .tile b { font-size: 16px; }
+  table { width: 100%; border-collapse: collapse; }
+  td, th { padding: 3px 2px; text-align: left; font-weight: normal; }
+  th { color: var(--muted); font-size: 11px; }
+  tr.hot td { color: #fca5a5; font-weight: 600; }
+  .bar { height: 6px; background: rgba(148,163,184,.25); border-radius: 3px; overflow: hidden; width: 80px; }
+  .bar i { display: block; height: 100%; background: var(--ok); }
+  tr.hot .bar i { background: var(--danger); }
+  #bottleneck { margin-top: 8px; padding: 8px; border-radius: 8px; background: rgba(220, 38, 38, .15); border: 1px solid rgba(220,38,38,.4); }
+  #assump { color: var(--muted); font-size: 11px; }
+  #togglePanel { position: fixed; top: 60px; left: 8px; z-index: 6; display: none; }
+
+  #alert { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); padding: 8px 14px; border-radius: 10px;
+    background: rgba(220, 38, 38, .92); font-weight: 600; z-index: 6; display: none; }
+  #alert.warn { background: rgba(217, 119, 6, .92); }
+  #help { position: fixed; bottom: 8px; left: 50%; transform: translateX(-50%); padding: 6px 12px; border-radius: 10px;
+    background: var(--panel); border: 1px solid var(--line); color: var(--muted); z-index: 5; max-width: calc(100vw - 240px); text-align: center; }
+  #help kbd { background: #334155; color: #fff; border-radius: 4px; padding: 0 5px; font: 11px monospace; }
+  #minimap { position: fixed; right: 8px; bottom: 8px; width: 240px; height: 160px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--panel); z-index: 5; }
+  #joy { position: fixed; left: 24px; bottom: 24px; width: 120px; height: 120px; border-radius: 50%;
+    background: rgba(255,255,255,.12); border: 2px solid rgba(255,255,255,.3); z-index: 7; display: none; touch-action: none; }
+  #knob { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,.55); }
+  #forkBtns { position: fixed; right: 16px; bottom: 180px; display: none; flex-direction: column; gap: 8px; z-index: 7; }
+  #forkBtns button { padding: 12px 16px; }
+  #crosshair { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px; border-radius: 50%; background: rgba(255,255,255,.8); display: none; z-index: 5; pointer-events: none; }
+
+  @media (max-width: 760px) {
+    #panel { top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 45vh; border-radius: 12px 12px 0 0; }
+    #panel.hidden { display: none; }
+    #togglePanel { display: block; top: auto; bottom: 8px; }
+    #minimap { width: 150px; height: 100px; top: 60px; bottom: auto; }
+    #help { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="labels"></div>
+<div id="crosshair"></div>
+
+<header id="modes">
+  <button data-mode="orbit" class="on">🛰 Órbita</button>
+  <button data-mode="top">🗺 Planta</button>
+  <button data-mode="follow">🎥 Seguir</button>
+  <button data-mode="walk">🚶 Andar</button>
+  <button data-mode="drive">🚜 Dirigir</button>
+</header>
+
+<button id="togglePanel">📊 Painel</button>
+<aside id="panel">
+  <h1>CD Demo — simulação 3D</h1>
+  <div class="sub">Camada SIMULATION do ARGUS.LLP · <a href="./">outras simulações</a></div>
+
+  <h2>Simulação</h2>
+  <div class="row">
+    <button id="play">⏸ Pausar</button>
+    <button id="reset">↺ Reiniciar</button>
+    <span>⏱ <b id="clock">06:00:00</b></span>
+  </div>
+  <div class="row" id="speeds" style="margin-top:6px">
+    <span class="sub">Velocidade</span>
+    <button data-speed="1">1×</button><button data-speed="5">5×</button><button data-speed="15" class="on">15×</button>
+    <button data-speed="30">30×</button><button data-speed="60">60×</button>
+  </div>
+
+  <h2>Parâmetros</h2>
+  <div class="ctl"><label for="p-truck">Caminhão a cada</label><input id="p-truck" type="range" min="8" max="60" step="1"><b id="v-truck"></b></div>
+  <div class="ctl"><label for="p-orders">Pedidos (pallets/h)</label><input id="p-orders" type="range" min="5" max="80" step="1"><b id="v-orders"></b></div>
+  <div class="ctl"><label for="p-forklifts">Empilhadeiras</label><input id="p-forklifts" type="range" min="1" max="6" step="1"><b id="v-forklifts"></b></div>
+  <div class="ctl"><label for="p-checkers">Conferentes</label><input id="p-checkers" type="range" min="1" max="4" step="1"><b id="v-checkers"></b></div>
+  <div class="ctl"><label for="p-pickers">Separadores</label><input id="p-pickers" type="range" min="1" max="6" step="1"><b id="v-pickers"></b></div>
+  <div class="ctl"><label for="p-loaders">Expedidores</label><input id="p-loaders" type="range" min="1" max="4" step="1"><b id="v-loaders"></b></div>
+
+  <h2>Indicadores (última hora simulada)</h2>
+  <div class="tiles">
+    <div class="tile"><small>Entrada</small><b id="k-in">0</b> <small>pallets/h</small></div>
+    <div class="tile"><small>Saída</small><b id="k-out">0</b> <small>pallets/h</small></div>
+    <div class="tile"><small>Lead time</small><b id="k-lead">—</b> <small>min/pedido</small></div>
+    <div class="tile"><small>WIP</small><b id="k-wip">0</b> <small>pallets</small></div>
+    <div class="tile"><small>Estoque</small><b id="k-stock">0%</b> <small id="k-stockn"></small></div>
+    <div class="tile"><small>Pedidos</small><b id="k-orders">0</b> <small>em espera</small></div>
+  </div>
+  <table style="margin-top:8px">
+    <thead><tr><th>Recurso</th><th>Qtd</th><th>Ocupação</th><th>Fila</th></tr></thead>
+    <tbody id="res"></tbody>
+  </table>
+  <div id="bottleneck">Coletando dados…</div>
+
+  <h2>Camadas</h2>
+  <div class="row">
+    <button id="t-labels" class="on">Rótulos</button>
+    <button id="t-heat">Mapa de calor</button>
+    <button id="t-roof" class="on">Teto</button>
+  </div>
+
+  <h2>Premissas</h2>
+  <div id="assump">
+    Galpão 60 × 40 m, pé-direito 9 m · 16 racks, 4 níveis (768 posições) · empilhadeira 2,5 m/s (ré 1,2 m/s),
+    garfo 0,45 m/s · pessoa 1,3 m/s · conferência ~70 s/pallet · separação ~150 s/pallet · carregamento ~45 s/pallet ·
+    caminhões com 8–16 pallets · tempos exponenciais com semente fixa (<span id="seed"></span>).
+    O layout está no formato de objetos do ARGUS.LLP (cm, <code>objectType</code>); o editor continua 2D.
+  </div>
+</aside>
+
+<div id="alert"></div>
+<div id="help"></div>
+<canvas id="minimap" width="480" height="320"></canvas>
+<div id="joy"><div id="knob"></div></div>
+<div id="forkBtns"><button id="forkUp">▲ Garfo</button><button id="forkDown">▼ Garfo</button></div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three'
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js'
+
+// ============================================================================================
+// Parâmetros (lidos da URL para que "Reiniciar" preserve a configuração)
+// ============================================================================================
+const qs = new URLSearchParams(location.search)
+const P = {
+  truck: +qs.get('truck') || 20,        // minutos entre caminhões
+  orders: +qs.get('orders') || 30,      // pallets pedidos por hora
+  forklifts: +qs.get('forklifts') || 2,
+  checkers: +qs.get('checkers') || 2,
+  pickers: +qs.get('pickers') || 2,
+  loaders: +qs.get('loaders') || 2,
+  seed: +qs.get('seed') || 42,
+}
+const MEAN = { check: 70, pick: 150, load: 45, unloadEvery: 18 }
+
+function mulberry32(a) {
+  return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296 }
+}
+const rand = mulberry32(P.seed)
+const expo = (mean) => -Math.log(1 - rand()) * mean
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v))
+const wrap = (a) => ((((a + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) - Math.PI
+const angDiff = (a, b) => wrap(a - b)
+
+// ============================================================================================
+// Layout no formato do ARGUS.LLP: medidas em cm, (x, y) = canto superior esquerdo na planta.
+// Conversão para 3D: metros, y da planta → z, Y para cima.
+// ============================================================================================
+const W = 60, D = 40, WALL_H = 9
+const BZ = 28.5, TZ = 8.5                       // eixo do corredor principal e do superior (m)
+const RACK_Z0 = 10, RACK_Z1 = 26, BAYS = 6, BAY = (RACK_Z1 - RACK_Z0) / BAYS
+const LEVELS = [0, 1.6, 3.2, 4.8]
+const PAIR_X = Array.from({ length: 8 }, (_, i) => 8 + i * 5.8)       // racks costas com costas
+const AISLES = Array.from({ length: 9 }, (_, i) => 8 + i * 5.8 - 2.3)  // eixos dos corredores de rack
+
+const cm = (m) => Math.round(m * 100)
+const objects = []
+const obj = (objectType, category, x, z, w, l, name, properties = {}) =>
+  objects.push({ id: `${objectType}-${objects.length + 1}`, objectType, category, name,
+    x: cm(x), y: cm(z), width: cm(w), length: cm(l), rotationDeg: 0, zIndex: objects.length, properties })
+
+PAIR_X.forEach((x0, i) => {
+  obj('rack', 'storage', x0 - 0.55, RACK_Z0, 1.1, RACK_Z1 - RACK_Z0, `R${2 * i + 1}`, { levels: 4, face: -1 })
+  obj('rack', 'storage', x0 + 0.65, RACK_Z0, 1.1, RACK_Z1 - RACK_Z0, `R${2 * i + 2}`, { levels: 4, face: 1 })
+})
+obj('area-receiving', 'area', 3, 31, 20, 7.5, 'Recebimento · Conferência')
+obj('area', 'area', 3.9, 9.5, 50, 17, 'Armazenagem', { areaType: 'storage' })
+obj('area-picking', 'area', 30, 1.5, 27, 5.8, 'Picking')
+obj('area-shipping', 'area', 37, 31, 20, 7.5, 'Expedição')
+obj('area', 'area', 24, 31, 12, 7.5, 'Estacionamento', { areaType: 'custom' })
+obj('area', 'area', 3, 1.5, 10, 5.5, 'Administrativo', { areaType: 'administrative' })
+;[7, 13, 19].forEach((x, i) => obj('dock', 'structure', x - 1.5, 39.7, 3, 0.3, `Doca R${i + 1}`, { side: 'in' }))
+;[42, 48, 54].forEach((x, i) => obj('dock', 'structure', x - 1.5, 39.7, 3, 0.3, `Doca E${i + 1}`, { side: 'out' }))
+obj('traffic-lane', 'flow', 3.9, 26.5, 52, 4.4, 'Corredor principal')
+obj('traffic-lane', 'flow', 3.9, 7.3, 52, 2.7, 'Corredor superior')
+obj('pedestrian-lane', 'flow', 0.4, 1, 1.8, 38.5, 'Faixa de pedestres')
+obj('door', 'structure', 0, 37, 0.3, 2.2, 'Entrada de pessoas')
+const LAYOUT = { name: 'CD Demo', widthM: W, heightM: D, scalePxPerMeter: 20, gridStepM: 1, objects }
+const toM = (o) => ({ x: o.x / 100, z: o.y / 100, w: o.width / 100, l: o.length / 100 })
+
+const AREA_COLORS = { // mesmas cores do app (FLOW_NODE_TYPE_COLORS)
+  'area-receiving': '#0D9488', storage: '#B45309', 'area-picking': '#7C3AED', 'area-shipping': '#2563EB',
+  administrative: '#0EA5E9', custom: '#334155',
+}
+const areaColor = (o) => AREA_COLORS[o.objectType] || AREA_COLORS[o.properties.areaType] || '#334155'
+
+// ============================================================================================
+// Three.js: renderer, cena, luz
+// ============================================================================================
+const app = document.getElementById('app')
+const renderer = new THREE.WebGLRenderer({ antialias: true })
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
+renderer.setSize(innerWidth, innerHeight)
+renderer.shadowMap.enabled = true
+renderer.shadowMap.type = THREE.PCFSoftShadowMap
+app.appendChild(renderer.domElement)
+
+const labelRenderer = new CSS2DRenderer({ element: document.getElementById('labels') })
+labelRenderer.setSize(innerWidth, innerHeight)
+
+const scene = new THREE.Scene()
+scene.background = new THREE.Color('#a9bccf')
+scene.fog = new THREE.Fog('#a9bccf', 90, 220)
+
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.05, 500)
+camera.position.set(W / 2 - 30, 42, D + 30)
+const controls = new OrbitControls(camera, renderer.domElement)
+controls.target.set(W / 2, 0, D / 2)
+controls.maxPolarAngle = Math.PI * 0.49
+controls.enableDamping = true
+
+scene.add(new THREE.HemisphereLight('#ffffff', '#6b7280', 1.6))
+const sun = new THREE.DirectionalLight('#ffffff', 1.6)
+sun.position.set(W / 2 + 20, 45, D / 2 + 15)
+sun.target.position.set(W / 2, 0, D / 2)
+sun.castShadow = true
+sun.shadow.mapSize.set(2048, 2048)
+Object.assign(sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 1, far: 120 })
+scene.add(sun, sun.target)
+
+const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.8, ...extra })
+function box(w, h, l, material, x = 0, y = 0, z = 0) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, l), material)
+  m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true
+  return m
+}
+function label(text, color, x, y, z, parent = scene) {
+  const el = document.createElement('div')
+  el.className = 'lbl'; el.textContent = text; el.style.background = color
+  const o = new CSS2DObject(el); o.position.set(x, y, z); parent.add(o)
+  return o
+}
+
+// ---- Piso, paredes (faces só para dentro: de fora a câmera enxerga o interior), teto ----
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), mat('#7c8a76'))
+ground.rotation.x = -Math.PI / 2; ground.position.set(W / 2, -0.02, D / 2); ground.receiveShadow = true
+scene.add(ground)
+const yard = new THREE.Mesh(new THREE.PlaneGeometry(W + 10, 30), mat('#6b7280'))
+yard.rotation.x = -Math.PI / 2; yard.position.set(W / 2, -0.01, D + 15); yard.receiveShadow = true
+scene.add(yard)
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), mat('#d6d3cd'))
+floor.rotation.x = -Math.PI / 2; floor.position.set(W / 2, 0, D / 2); floor.receiveShadow = true
+scene.add(floor)
+{
+  const pts = []
+  for (let x = 0; x <= W; x += 2) pts.push(x, 0.004, 0, x, 0.004, D)
+  for (let z = 0; z <= D; z += 2) pts.push(0, 0.004, z, W, 0.004, z)
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3))
+  scene.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: '#b9b4ab' })))
+}
+const wallMat = mat('#e5e7eb')
+const walls = [
+  [W, 0, Math.PI * 0, W / 2, 0],          // norte, normal +z
+  [W, 0, Math.PI, W / 2, D],              // sul, normal -z
+  [D, 0, Math.PI / 2, 0, D / 2],          // oeste, normal +x
+  [D, 0, -Math.PI / 2, W, D / 2],         // leste, normal -x
+]
+for (const [len, , rot, x, z] of walls) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(len, WALL_H), wallMat)
+  m.rotation.y = rot; m.position.set(x, WALL_H / 2, z); m.receiveShadow = true
+  scene.add(m)
+  const band = new THREE.Mesh(new THREE.PlaneGeometry(len, 1.2), mat('#64748b'))
+  band.rotation.y = rot; band.position.set(x, 0.6, z); band.position.addScaledVector(new THREE.Vector3(Math.sin(rot), 0, Math.cos(rot)), 0.01)
+  scene.add(band)
+}
+const roof = new THREE.Mesh(new THREE.PlaneGeometry(W, D), mat('#9ca3af'))
+roof.rotation.x = Math.PI / 2; roof.position.set(W / 2, WALL_H, D / 2)  // normal para baixo: some visto de cima
+scene.add(roof)
+// luminárias industriais (só aparecem de dentro)
+for (let x = 6; x < W; x += 8) for (let z = 5; z < D; z += 8) {
+  const l = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.08, 0.4), new THREE.MeshBasicMaterial({ color: '#fffbe6' }))
+  l.position.set(x, WALL_H - 0.6, z); scene.add(l)
+}
+
+// ---- Objetos do layout ----
+const areaMeshes = {}
+const labels = []
+const obstacles = []   // AABBs para colisão de quem anda/dirige: {x0,z0,x1,z1}
+const rackUpr = [], rackBeam = []
+for (const o of LAYOUT.objects) {
+  const { x, z, w, l } = toM(o)
+  if (o.category === 'area') {
+    const color = areaColor(o)
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, l),
+      new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.22, depthWrite: false }))
+    m.rotation.x = -Math.PI / 2; m.position.set(x + w / 2, 0.012, z + l / 2); m.receiveShadow = true
+    scene.add(m)
+    const edge = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(w, l)), new THREE.LineBasicMaterial({ color }))
+    edge.rotation.x = -Math.PI / 2; edge.position.copy(m.position).setY(0.015); scene.add(edge)
+    areaMeshes[o.name] = m
+    labels.push(label(o.name, color, x + w / 2, 0.3, o.objectType === 'area' && o.properties.areaType === 'storage' ? z - 0.2 : z + l / 2))
+  } else if (o.objectType === 'rack') {
+    const cx = x + w / 2
+    for (let b = 0; b <= BAYS; b++) for (const dx of [-0.5, 0.5]) rackUpr.push([cx + dx, z + b * BAY])
+    for (let b = 0; b < BAYS; b++) for (const y of [1.5, 3.1, 4.7, 6.25]) for (const dx of [-0.5, 0.5]) rackBeam.push([cx + dx, y, z + b * BAY + BAY / 2])
+    obstacles.push({ x0: x, z0: z, x1: x + w, z1: z + l })
+  } else if (o.objectType === 'dock') {
+    const cx = x + w / 2
+    const door = new THREE.Mesh(new THREE.PlaneGeometry(3, 3.4), mat(o.properties.side === 'in' ? '#475569' : '#334155', { side: THREE.DoubleSide }))
+    door.position.set(cx, 1.7, D - 0.03); scene.add(door)
+    for (const dx of [-1.6, 1.6]) scene.add(box(0.15, 1.2, 0.2, mat('#facc15'), cx + dx, 0.6, D - 0.12))
+    scene.add(box(3.2, 0.12, 2.2, mat('#57534e'), cx, 0.06, D - 1.1))  // nivelador
+    labels.push(label(o.name, o.properties.side === 'in' ? '#0D9488' : '#2563EB', cx, 3.8, D - 0.2))
+  } else if (o.objectType === 'traffic-lane') {
+    for (const ez of [z, z + l]) {
+      const s = new THREE.Mesh(new THREE.PlaneGeometry(w, 0.12), new THREE.MeshBasicMaterial({ color: '#eab308' }))
+      s.rotation.x = -Math.PI / 2; s.position.set(x + w / 2, 0.018, ez); scene.add(s)
+    }
+  } else if (o.objectType === 'pedestrian-lane') {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, l), new THREE.MeshBasicMaterial({ color: '#16a34a', transparent: true, opacity: 0.45 }))
+    m.rotation.x = -Math.PI / 2; m.position.set(x + w / 2, 0.016, z + l / 2); scene.add(m)
+    for (let zz = z + 1; zz < z + l; zz += 3) {
+      const d = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 1.4), new THREE.MeshBasicMaterial({ color: '#f8fafc' }))
+      d.rotation.x = -Math.PI / 2; d.position.set(x + w / 2, 0.02, zz); scene.add(d)
+    }
+    labels.push(label('Pedestres', '#16a34a', x + w / 2, 0.3, 20))
+  } else if (o.objectType === 'door') {
+    const door = new THREE.Mesh(new THREE.PlaneGeometry(l, 2.3), mat('#16a34a', { side: THREE.DoubleSide }))
+    door.rotation.y = Math.PI / 2; door.position.set(0.03, 1.15, z + l / 2); scene.add(door)
+  }
+}
+{
+  const up = new THREE.InstancedMesh(new THREE.BoxGeometry(0.09, 6.4, 0.09), mat('#1e3a8a'), rackUpr.length)
+  const m4 = new THREE.Matrix4()
+  rackUpr.forEach(([x, z], i) => up.setMatrixAt(i, m4.makeTranslation(x, 3.2, z)))
+  const bm = new THREE.InstancedMesh(new THREE.BoxGeometry(0.07, 0.12, BAY - 0.1), mat('#f97316'), rackBeam.length)
+  rackBeam.forEach(([x, y, z], i) => bm.setMatrixAt(i, m4.makeTranslation(x, y, z)))
+  for (const im of [up, bm]) { im.castShadow = true; im.receiveShadow = true; scene.add(im) }
+}
+
+// ============================================================================================
+// Pallets
+// ============================================================================================
+const PALLET_COLORS = ['#c8a97e', '#b98f5c', '#d6c29a', '#a77b4f', '#9fb7c9', '#bfa58a']
+const woodMat = mat('#8B5E34')
+const loadMats = PALLET_COLORS.map((c) => mat(c))
+const checkMat = mat('#fde047', { emissive: '#a16207', emissiveIntensity: 0.4 })
+const baseGeo = new THREE.BoxGeometry(1.0, 0.14, 1.2).translate(0, 0.07, 0)
+const loadGeo = new THREE.BoxGeometry(0.95, 1.0, 1.1).translate(0, 0.64, 0)
+let palletSeq = 0
+function makePallet(colorIdx = Math.floor(rand() * PALLET_COLORS.length)) {
+  const g = new THREE.Group()
+  const base = new THREE.Mesh(baseGeo, woodMat), load = new THREE.Mesh(loadGeo, loadMats[colorIdx])
+  for (const m of [base, load]) { m.castShadow = true; m.receiveShadow = true; g.add(m) }
+  scene.add(g)
+  return { id: ++palletSeq, mesh: g, load, colorIdx, state: 'new' }
+}
+function disposePallet(p) { p.mesh.removeFromParent() }
+
+// Posições dos racks: pallets guardados são instâncias (768 sem custo de draw call)
+const slots = []
+PAIR_X.forEach((x0, p) => {
+  for (const [rx, face, aisle] of [[x0, -1, p], [x0 + 1.2, 1, p + 1]]) {
+    for (let b = 0; b < BAYS; b++) for (const dz of [-0.68, 0.68]) LEVELS.forEach((y, lv) => {
+      const z = RACK_Z0 + b * BAY + BAY / 2 + dz
+      slots.push({ idx: slots.length, x: rx, y: lv === 0 ? 0 : y - 0.05, z, occupied: false, reserved: false, colorIdx: 0,
+        ep: { kind: 'A', aisle, x: rx + face * 1.6, z, theta: face < 0 ? Math.PI / 2 : -Math.PI / 2 } })
+    })
+  }
+})
+const stBase = new THREE.InstancedMesh(new THREE.BoxGeometry(1.2, 0.14, 1.0).translate(0, 0.07, 0), woodMat, slots.length)
+const stLoad = new THREE.InstancedMesh(new THREE.BoxGeometry(1.1, 1.0, 0.95).translate(0, 0.64, 0), mat('#ffffff'), slots.length)
+for (const im of [stBase, stLoad]) { im.castShadow = true; im.receiveShadow = true; scene.add(im) }
+const _m = new THREE.Matrix4(), _zero = new THREE.Matrix4().makeScale(0, 0, 0), _c = new THREE.Color()
+function setSlot(slot, on) {
+  slot.occupied = on
+  const m = on ? _m.makeTranslation(slot.x, slot.y, slot.z) : _zero
+  stBase.setMatrixAt(slot.idx, m); stLoad.setMatrixAt(slot.idx, m)
+  if (on) stLoad.setColorAt(slot.idx, _c.set(PALLET_COLORS[slot.colorIdx]))
+  stBase.instanceMatrix.needsUpdate = stLoad.instanceMatrix.needsUpdate = true
+  if (stLoad.instanceColor) stLoad.instanceColor.needsUpdate = true
+}
+slots.forEach((s) => { s.colorIdx = Math.floor(rand() * PALLET_COLORS.length); setSlot(s, rand() < 0.55) })
+
+// Posições de piso
+const spotMarker = (x, z) => {
+  const m = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(1.3, 1.5)), new THREE.LineBasicMaterial({ color: '#f8fafc' }))
+  m.rotation.x = -Math.PI / 2; m.position.set(x, 0.02, z); scene.add(m)
+}
+const recvSpots = Array.from({ length: 9 }, (_, i) => ({ x: 4.5 + 2.1 * i, z: 33.5, free: true }))
+const shipSpots = Array.from({ length: 9 }, (_, i) => ({ x: 38.5 + 2.1 * i, z: 33.5, free: true }))
+const pickSpots = Array.from({ length: 10 }, (_, i) => ({ x: 31.5 + 2.6 * i, z: 4.5, free: true }))
+for (const s of [...recvSpots, ...shipSpots]) { s.ep = { kind: 'B', x: s.x, z: s.z - 1.6, theta: 0 }; spotMarker(s.x, s.z) }
+for (const s of pickSpots) { s.ep = { kind: 'T', x: s.x, z: s.z + 1.6, theta: Math.PI }; spotMarker(s.x, s.z) }
+const PARK = Array.from({ length: 6 }, (_, i) => ({ kind: 'B', x: 25.5 + 2.2 * i, z: 32.6, theta: Math.PI }))
+const freeOf = (arr) => arr.filter((s) => s.free)
+
+// ============================================================================================
+// Rotas: grafo de corredores (eixo principal, eixo superior e os 9 corredores de rack)
+// ============================================================================================
+function accessPoint(ep) {
+  if (ep.kind === 'B') return { x: ep.x, z: BZ }
+  if (ep.kind === 'T') return { x: ep.x, z: TZ }
+  return { x: AISLES[ep.aisle], z: ep.z }
+}
+function graphPath(a, b) {
+  const nodes = [], adj = []
+  const add = (p) => { nodes.push(p); adj.push([]); return nodes.length - 1 }
+  const link = (i, j) => { const d = Math.hypot(nodes[i].x - nodes[j].x, nodes[i].z - nodes[j].z); adj[i].push([j, d]); adj[j].push([i, d]) }
+  const JB = AISLES.map((x) => add({ x, z: BZ })), JT = AISLES.map((x) => add({ x, z: TZ }))
+  AISLES.forEach((_, k) => { link(JB[k], JT[k]); if (k) { link(JB[k - 1], JB[k]); link(JT[k - 1], JT[k]) } })
+  const attach = (ep) => {
+    const n = add(accessPoint(ep))
+    if (ep.kind === 'A') { link(n, JB[ep.aisle]); link(n, JT[ep.aisle]); return n }
+    const J = ep.kind === 'B' ? JB : JT
+    let left = -1, right = -1
+    AISLES.forEach((x, k) => { if (x <= nodes[n].x) left = k; if (x >= nodes[n].x && right < 0) right = k })
+    if (left >= 0) link(n, J[left]); if (right >= 0) link(n, J[right])
+    return n
+  }
+  const na = attach(a), nb = attach(b)
+  if (a.kind === b.kind && (a.kind !== 'A' || a.aisle === b.aisle)) link(na, nb)
+  const n = nodes.length, dist = Array(n).fill(Infinity), prev = Array(n).fill(-1), done = Array(n).fill(false)
+  dist[na] = 0
+  for (;;) {
+    let u = -1
+    for (let i = 0; i < n; i++) if (!done[i] && dist[i] < Infinity && (u < 0 || dist[i] < dist[u])) u = i
+    if (u < 0 || u === nb) break
+    done[u] = true
+    for (const [v, w] of adj[u]) if (dist[u] + w < dist[v]) { dist[v] = dist[u] + w; prev[v] = u }
+  }
+  const path = []
+  for (let u = nb; u >= 0; u = prev[u]) path.unshift(nodes[u])
+  return path
+}
+function planPath(from, to) {
+  const pts = [...graphPath(from, to), { x: to.x, z: to.z }]
+  return pts.filter((p, i) => i === 0 || Math.hypot(p.x - pts[i - 1].x, p.z - pts[i - 1].z) > 0.01)
+}
+
+// ============================================================================================
+// Empilhadeira (modelo simplificado; detalhado em empilhadeira-3d.html)
+// ============================================================================================
+function makeForkliftModel(color) {
+  const g = new THREE.Group()
+  const body = mat(color), dark = mat('#1f2937'), steel = mat('#9ca3af', { metalness: 0.6, roughness: 0.4 })
+  g.add(box(1.1, 0.9, 1.7, body, 0, 0.75, -0.15))
+  g.add(box(1.1, 0.75, 0.45, dark, 0, 0.75, -1.15))
+  for (const [x, z] of [[-0.5, -0.65], [0.5, -0.65], [-0.5, 0.45], [0.5, 0.45]]) g.add(box(0.06, 1.3, 0.06, dark, x, 1.85, z))
+  g.add(box(1.12, 0.06, 1.2, dark, 0, 2.5, -0.1))
+  g.add(box(0.5, 0.45, 0.5, mat('#111827'), 0, 1.4, -0.45))
+  const wheelGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.22, 16).rotateZ(Math.PI / 2)
+  for (const [x, z, r] of [[-0.6, 0.45, 1], [0.6, 0.45, 1], [-0.5, -0.9, 0.8], [0.5, -0.9, 0.8]]) {
+    const w = new THREE.Mesh(wheelGeo, dark); w.scale.set(1, r, r); w.position.set(x, 0.32 * r, z); w.castShadow = true; g.add(w)
+  }
+  const outer = new THREE.Group(); g.add(outer)
+  for (const x of [-0.38, 0.38]) outer.add(box(0.08, 2.6, 0.12, steel, x, 1.4, 0.85))
+  const inner = new THREE.Group(); g.add(inner)
+  for (const x of [-0.3, 0.3]) inner.add(box(0.07, 2.5, 0.1, steel, x, 1.35, 0.92))
+  const forks = new THREE.Group(); g.add(forks)
+  forks.add(box(0.9, 0.5, 0.06, dark, 0, 0.3, 0.98))
+  for (const x of [-0.3, 0.3]) forks.add(box(0.12, 0.05, 1.15, steel, x, 0.03, 1.55))
+  const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.08), new THREE.MeshBasicMaterial({ color: '#f97316' }))
+  beacon.position.set(0, 2.6, -0.6); g.add(beacon)
+  scene.add(g)
+  return { g, forks, inner, beacon }
+}
+const FORK_TIP = 1.6   // centro do pallet à frente do centro da máquina
+
+class Forklift {
+  constructor(i) {
+    this.i = i
+    Object.assign(this, makeForkliftModel('#2563EB'))
+    this.ep = PARK[i % PARK.length]
+    this.x = this.ep.x; this.z = this.ep.z; this.th = this.ep.theta
+    this.h = 0.05; this.v = 0; this.task = null; this.actions = []; this.cur = null; this.load = null
+    this.wait = 0; this.retire = false; this.busySum = 0
+  }
+  get busy() { return !!this.task }
+  assign(task) { this.task = task; this.actions = [...task.actions]; this.next() }
+  next() {
+    this.cur = this.actions.shift() || null
+    if (!this.cur) { this.task = null; return }
+    if (this.cur.type === 'go') { this.path = planPath(this.ep, this.cur.ep); this.seg = 0; this.reverseOk = true }
+  }
+  step(dt) {
+    const a = this.cur
+    if (!a) return
+    if (a.type === 'go') { if (this.drive(dt)) { this.ep = a.ep; this.next() } }
+    else if (a.type === 'turn') { const d = angDiff(a.ep.theta, this.th); this.th = wrap(this.th + clamp(d, -1.6 * dt, 1.6 * dt)); if (Math.abs(d) < 0.01) { this.th = a.ep.theta; this.next() } }
+    else if (a.type === 'lift') { const d = a.h - this.h; this.h += clamp(d, -0.5 * dt, 0.45 * dt); if (Math.abs(d) < 0.005) { this.h = a.h; this.next() } }
+    else if (a.type === 'do') { a.fn(this); this.next() }
+  }
+  blocked(dir) {
+    const others = forklifts.filter((f) => f !== this).map((f) => ({ x: f.x, z: f.z, r: 2.7, hard: false }))
+    if (mode === 'walk') others.push({ x: walker.x, z: walker.z, r: 3.2, hard: true })
+    if (mode === 'drive') others.push({ x: user.x, z: user.z, r: 3.2, hard: true })
+    for (const o of others) {
+      const rx = o.x - this.x, rz = o.z - this.z, d = Math.hypot(rx, rz)
+      if (d < o.r && (rx * dir.x + rz * dir.z) > 0.55 * d && (o.hard || this.ghost <= 0)) return true
+    }
+    return false
+  }
+  drive(dt) {
+    const wp = this.path[this.seg]
+    if (!wp) return true
+    const dx = wp.x - this.x, dz = wp.z - this.z, d = Math.hypot(dx, dz)
+    if (d < 0.03) {
+      this.x = wp.x; this.z = wp.z; this.seg++; this.reverseOk = false
+      if (this.seg >= this.path.length) { this.v = 0; return true }
+      return false
+    }
+    let want = Math.atan2(dx, dz), rev = false
+    if (this.reverseOk && Math.abs(angDiff(want, this.th)) > Math.PI * 0.6) { want = wrap(want + Math.PI); rev = true }
+    const diff = angDiff(want, this.th)
+    this.th = wrap(this.th + clamp(diff, -1.6 * dt, 1.6 * dt))
+    const vmax = (rev ? 1.2 : 2.5) * (this.load ? 0.8 : 1)
+    let target = Math.abs(diff) > 0.25 ? 0 : Math.min(vmax, Math.sqrt(2 * 0.9 * d) + 0.25)
+    const dir = { x: dx / d, z: dz / d }
+    // impasse entre empilhadeiras: após 3 s parada, ela passa a ignorar as outras por 4 s
+    this.ghost = Math.max(0, (this.ghost || 0) - dt)
+    if (this.blocked(dir)) { target = 0; this.wait += dt; if (this.wait > 3) { this.ghost = 4; this.wait = 0 } } else this.wait = 0
+    this.v += clamp(target - this.v, -3 * dt, 1.2 * dt)
+    const s = Math.min(Math.max(this.v, 0) * dt, d)
+    this.x += dir.x * s; this.z += dir.z * s
+    heat[clamp(Math.floor(this.z), 0, D - 1) * W + clamp(Math.floor(this.x), 0, W - 1)] += dt
+    return false
+  }
+  sync(t) {
+    this.g.position.set(this.x, 0, this.z); this.g.rotation.y = this.th
+    this.forks.position.y = this.h; this.inner.position.y = Math.max(0, this.h - 1.9)
+    this.beacon.visible = this.busy && Math.floor(t * 2) % 2 === 0
+  }
+  dispose() { this.g.removeFromParent() }
+}
+
+function attachToForks(f, p) { f.load = p; f.forks.add(p.mesh); p.mesh.position.set(0, 0.06, FORK_TIP); p.mesh.rotation.set(0, 0, 0) }
+function dropFromForks(f, p, spot) {
+  f.load = null; scene.add(p.mesh); p.mesh.position.set(spot.x, 0, spot.z); p.mesh.rotation.set(0, f.th, 0)
+}
+
+// ============================================================================================
+// Pessoas (conferentes, separadores, expedidores)
+// ============================================================================================
+const capsule = new THREE.CapsuleGeometry(0.22, 0.85, 4, 10).translate(0, 0.65, 0)
+const headGeo = new THREE.SphereGeometry(0.14, 12, 10).translate(0, 1.42, 0)
+const skin = mat('#e0b48c')
+function makePerson(color) {
+  const g = new THREE.Group()
+  const b = new THREE.Mesh(capsule, mat(color)), h = new THREE.Mesh(headGeo, skin)
+  b.castShadow = h.castShadow = true; g.add(b, h)
+  const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat('#facc15'))
+  helmet.position.y = 1.47; g.add(helmet)
+  scene.add(g)
+  return g
+}
+class Worker {
+  constructor(color, home) { this.g = makePerson(color); this.home = home; this.x = home.x; this.z = home.z; this.target = home; this.job = null; this.left = 0; this.retire = false }
+  step(dt) {
+    const dx = this.target.x - this.x, dz = this.target.z - this.z, d = Math.hypot(dx, dz)
+    if (d > 0.02) { const s = Math.min(1.3 * dt, d); this.x += dx / d * s; this.z += dz / d * s; this.g.rotation.y = Math.atan2(dx, dz); this.walking = true }
+    else this.walking = false
+  }
+  sync(t) { this.g.position.set(this.x, this.walking ? Math.abs(Math.sin(t * 9)) * 0.05 : 0, this.z) }
+}
+class Station {
+  constructor(name, area, color, mean, homes, approach, onDone) {
+    Object.assign(this, { name, area, color, mean, homes, approach, onDone }); this.queue = []; this.workers = []; this.util = 0
+  }
+  setCount(n) {
+    while (this.workers.filter((w) => !w.retire).length < n) {
+      const w = this.workers.find((w) => w.retire)
+      if (w) w.retire = false
+      else this.workers.push(new Worker(this.color, this.homes[this.workers.length % this.homes.length]))
+    }
+    const active = this.workers.filter((w) => !w.retire)
+    for (let k = active.length - 1; k >= n; k--) active[k].retire = true
+  }
+  get active() { return this.workers.filter((w) => !w.retire).length }
+  step(dt) {
+    for (const w of this.workers) {
+      if (!w.job && w.retire) { w.g.removeFromParent(); w.dead = true; continue }
+      if (!w.job && this.queue.length) {
+        w.job = this.queue.shift(); w.left = expo(this.mean)
+        const p = w.job.mesh.position
+        w.target = { x: p.x + 0.9, z: p.z + this.approach }
+        w.job.load.material = checkMat
+      }
+      if (w.job && !w.walking && Math.hypot(w.target.x - w.x, w.target.z - w.z) < 0.05) {
+        w.left -= dt
+        if (w.left <= 0) { const p = w.job; w.job = null; p.load.material = loadMats[p.colorIdx]; w.target = w.home; this.onDone(p) }
+      }
+      w.step(dt)
+    }
+    this.workers = this.workers.filter((w) => !w.dead)
+    const n = Math.max(1, this.workers.length)
+    this.inst = this.workers.filter((w) => w.job).length / n
+  }
+}
+
+// ============================================================================================
+// Processo: chegada → conferência → armazenagem → pedido → picking → expedição
+// ============================================================================================
+const stats = { inTimes: [], outTimes: [], leads: [], shipped: 0 }
+const readyQueue = [], orders = [], pickedQueue = []
+const tweens = []
+const tween = (obj3d, to, dur, onDone) => tweens.push({ o: obj3d, from: obj3d.position.clone(), to: new THREE.Vector3(to.x, to.y ?? 0, to.z), t: 0, dur, onDone })
+let simT = 0
+
+const checking = new Station('Conferência', 'Recebimento · Conferência', '#0D9488', MEAN.check,
+  [0, 1, 2, 3].map((i) => ({ x: 5 + 4.5 * i, z: 37.6 })), 1.2,
+  (p) => { p.state = 'ready'; p.tReady = simT; readyQueue.push(p); stats.inTimes.push(simT) })
+const picking = new Station('Separação', 'Picking', '#7C3AED', MEAN.pick,
+  [0, 1, 2, 3, 4, 5].map((i) => ({ x: 32 + 4.4 * i, z: 2.3 })), -1.3,
+  (p) => { p.state = 'picked'; pickedQueue.push(p) })
+const loading = new Station('Expedição', 'Expedição', '#2563EB', MEAN.load,
+  [0, 1, 2, 3].map((i) => ({ x: 40 + 4.5 * i, z: 37.6 })), 1.2,
+  (p) => {
+    p.spot.free = true
+    const dock = [42, 48, 54].reduce((a, b) => (Math.abs(b - p.mesh.position.x) < Math.abs(a - p.mesh.position.x) ? b : a))
+    tween(p.mesh, { x: dock, z: D + 1.5 }, 5, () => disposePallet(p))
+    stats.outTimes.push(simT); stats.leads.push(simT - p.order.t0); stats.shipped++
+    if (stats.leads.length > 30) stats.leads.shift()
+  })
+const stations = [checking, picking, loading]
+
+// Caminhões
+const docksIn = [7, 13, 19].map((x) => ({ x, truck: null }))
+const docksOut = [42, 48, 54]
+const truckQueue = []
+let nextTruck = 60, nextOrder = expo(3600 / P.orders)
+function makeTruck(color) {
+  const g = new THREE.Group()
+  g.add(box(2.5, 2.7, 12, mat('#f1f5f9'), 0, 2.45, 6.1))
+  g.add(box(2.5, 0.3, 12, mat('#334155'), 0, 1.0, 6.1))
+  g.add(box(2.5, 2.4, 2.2, mat(color), 0, 1.9, 13.5))
+  g.add(box(2.3, 0.9, 0.05, mat('#0f172a'), 0, 2.4, 14.62))
+  const wg = new THREE.CylinderGeometry(0.5, 0.5, 0.35, 14).rotateZ(Math.PI / 2)
+  for (const z of [2, 3.2, 11.2, 13.6]) for (const x of [-1.1, 1.1]) { const w = new THREE.Mesh(wg, mat('#111827')); w.position.set(x, 0.5, z); g.add(w) }
+  scene.add(g)
+  return g
+}
+docksOut.forEach((x) => { const t = makeTruck('#1d4ed8'); t.position.set(x, 0, D + 0.3) })
+
+function stepTrucks(dt) {
+  if (simT >= nextTruck) { truckQueue.push({ n: 8 + Math.floor(rand() * 9) }); nextTruck = simT + expo(P.truck * 60) }
+  for (const d of docksIn) {
+    if (!d.truck && truckQueue.length) {
+      const t = truckQueue.shift(); t.g = makeTruck('#0f766e'); t.g.position.set(d.x, 0, D + 40); t.arrived = false; t.timer = 0; d.truck = t
+      tween(t.g, { x: d.x, z: D + 0.3 }, 12, () => { t.arrived = true })
+    }
+    const t = d.truck
+    if (!t || !t.arrived) continue
+    if (t.n > 0) {
+      t.timer -= dt
+      const spot = freeOf(recvSpots).sort((a, b) => Math.abs(a.x - d.x) - Math.abs(b.x - d.x))[0]
+      if (t.timer <= 0 && spot) {
+        t.n--; t.timer = MEAN.unloadEvery; spot.free = false
+        const p = makePallet(); p.spot = spot; p.state = 'unloading'
+        p.mesh.position.set(d.x, 0, D - 0.5)
+        tween(p.mesh, { x: spot.x, z: spot.z }, 7, () => { p.state = 'check'; checking.queue.push(p) })
+      }
+    } else if (!t.leaving) {
+      t.leaving = true
+      tween(t.g, { x: d.x, z: D + 40 }, 12, () => { t.g.removeFromParent(); d.truck = null })
+    }
+  }
+}
+
+// Tarefas de empilhadeira
+function taskPutaway(p, slot) {
+  return { kind: 'Armazenar', from: p.spot.ep, actions: [
+    { type: 'go', ep: p.spot.ep }, { type: 'turn', ep: p.spot.ep }, { type: 'lift', h: 0.05 },
+    { type: 'do', fn: (f) => { attachToForks(f, p); p.spot.free = true; p.state = 'moving' } },
+    { type: 'lift', h: 0.3 }, { type: 'go', ep: slot.ep }, { type: 'turn', ep: slot.ep }, { type: 'lift', h: slot.y + 0.08 },
+    { type: 'do', fn: (f) => { f.load = null; slot.colorIdx = p.colorIdx; slot.reserved = false; setSlot(slot, true); disposePallet(p) } },
+    { type: 'lift', h: 0.05 },
+  ] }
+}
+function taskRetrieve(order, slot, spot) {
+  let p
+  return { kind: 'Buscar', from: slot.ep, actions: [
+    { type: 'go', ep: slot.ep }, { type: 'turn', ep: slot.ep }, { type: 'lift', h: slot.y + 0.08 },
+    { type: 'do', fn: (f) => { setSlot(slot, false); slot.reserved = false; p = makePallet(slot.colorIdx); p.order = order; p.state = 'moving'; attachToForks(f, p) } },
+    { type: 'lift', h: 0.3 }, { type: 'go', ep: spot.ep }, { type: 'turn', ep: spot.ep }, { type: 'lift', h: 0.05 },
+    { type: 'do', fn: (f) => { p.spot = spot; dropFromForks(f, p, spot); p.state = 'pick'; picking.queue.push(p) } },
+  ] }
+}
+function taskShip(p, spot) {
+  return { kind: 'Expedir', from: p.spot.ep, actions: [
+    { type: 'go', ep: p.spot.ep }, { type: 'turn', ep: p.spot.ep }, { type: 'lift', h: 0.05 },
+    { type: 'do', fn: (f) => { attachToForks(f, p); p.spot.free = true; p.state = 'moving' } },
+    { type: 'lift', h: 0.3 }, { type: 'go', ep: spot.ep }, { type: 'turn', ep: spot.ep }, { type: 'lift', h: 0.05 },
+    { type: 'do', fn: (f) => { p.spot = spot; dropFromForks(f, p, spot); p.state = 'load'; loading.queue.push(p) } },
+  ] }
+}
+const pickRandom = (arr) => arr[Math.floor(rand() * arr.length)]
+function nextTask() {
+  const ship = freeOf(shipSpots)
+  if (pickedQueue.length && ship.length) {
+    const p = pickedQueue.shift(), s = ship.sort((a, b) => Math.abs(a.x - p.mesh.position.x) - Math.abs(b.x - p.mesh.position.x))[0]
+    s.free = false; return taskShip(p, s)
+  }
+  const pick = freeOf(pickSpots)
+  const stock = orders.length && pick.length ? slots.filter((s) => s.occupied && !s.reserved) : []
+  const empty = readyQueue.length ? slots.filter((s) => !s.occupied && !s.reserved) : []
+  const canRet = stock.length > 0, canPut = empty.length > 0
+  if (canRet && (!canPut || orders[0].t0 <= readyQueue[0].tReady)) {
+    const order = orders.shift(), slot = pickRandom(stock), spot = pickRandom(pick)
+    slot.reserved = true; spot.free = false; return taskRetrieve(order, slot, spot)
+  }
+  if (canPut) { const p = readyQueue.shift(), slot = pickRandom(empty); slot.reserved = true; return taskPutaway(p, slot) }
+  return null
+}
+function dispatch() {
+  for (;;) {
+    const idle = forklifts.filter((f) => !f.task && !f.retire)
+    if (!idle.length) return
+    const task = nextTask()
+    if (!task) return
+    const a = accessPoint(task.from)
+    idle.sort((f, g) => Math.hypot(f.x - a.x, f.z - a.z) - Math.hypot(g.x - a.x, g.z - a.z))[0].assign(task)
+  }
+}
+
+let forklifts = []
+function setForklifts(n) {
+  forklifts.forEach((f) => (f.retire = false))
+  while (forklifts.length < n) forklifts.push(new Forklift(forklifts.length))
+  for (let k = n; k < forklifts.length; k++) forklifts[k].retire = true
+}
+setForklifts(P.forklifts)
+checking.setCount(P.checkers); picking.setCount(P.pickers); loading.setCount(P.loaders)
+
+const heat = new Float32Array(W * D)
+const util = { Conferência: 0, Empilhadeiras: 0, Separação: 0, Expedição: 0 }
+
+function simStep(dt) {
+  simT += dt
+  stepTrucks(dt)
+  if (simT >= nextOrder) { orders.push({ t0: simT }); nextOrder = simT + expo(3600 / P.orders) }
+  for (const s of stations) s.step(dt)
+  dispatch()
+  for (const f of forklifts) f.step(dt)
+  forklifts = forklifts.filter((f) => { if (f.retire && !f.task) { f.dispose(); return false } return true })
+  for (let i = tweens.length - 1; i >= 0; i--) {
+    const tw = tweens[i]; tw.t += dt
+    const k = Math.min(1, tw.t / tw.dur), e = k * k * (3 - 2 * k)
+    tw.o.position.lerpVectors(tw.from, tw.to, e)
+    if (k >= 1) { tweens.splice(i, 1); tw.onDone?.() }
+  }
+  const tau = Math.max(dt, Math.min(1800, simT))
+  const inst = { Conferência: checking.inst, Separação: picking.inst, Expedição: loading.inst,
+    Empilhadeiras: forklifts.filter((f) => f.busy).length / Math.max(1, forklifts.length) }
+  for (const k in util) util[k] += (inst[k] - util[k]) * (dt / tau)
+}
+
+// ============================================================================================
+// Mapa de calor do tráfego de empilhadeiras
+// ============================================================================================
+const heatData = new Uint8Array(W * D * 4)
+const heatTex = new THREE.DataTexture(heatData, W, D)
+heatTex.magFilter = THREE.LinearFilter
+const heatPlane = new THREE.Mesh(new THREE.PlaneGeometry(W, D), new THREE.MeshBasicMaterial({ map: heatTex, transparent: true, depthWrite: false }))
+heatPlane.rotation.x = -Math.PI / 2; heatPlane.position.set(W / 2, 0.03, D / 2); heatPlane.visible = false
+scene.add(heatPlane)
+function updateHeat() {
+  let max = 1e-6; for (const v of heat) max = Math.max(max, v)
+  for (let j = 0; j < D; j++) for (let i = 0; i < W; i++) {
+    const v = Math.sqrt(heat[(D - 1 - j) * W + i] / max), o = (j * W + i) * 4
+    heatData[o] = 255; heatData[o + 1] = Math.round(220 * (1 - v)); heatData[o + 2] = 0; heatData[o + 3] = v > 0.02 ? Math.round(60 + 170 * v) : 0
+  }
+  heatTex.needsUpdate = true
+}
+
+// ============================================================================================
+// Modos de câmera: órbita, planta, seguir, andar (1ª pessoa) e dirigir
+// ============================================================================================
+let mode = 'orbit', followIdx = 0, cabin = false
+const walker = { x: 1.3, z: 37.5, yaw: Math.PI, pitch: 0, g: makePerson('#dc2626') }
+const user = { x: 30.5, z: 35, th: Math.PI, v: 0, h: 0.05, ...makeForkliftModel('#dc2626') }
+const keys = new Set()
+const joy = { x: 0, y: 0 }
+const forkBtn = { up: false, down: false }
+const isTouch = matchMedia('(pointer: coarse)').matches
+
+function collide(x, z, r) {
+  x = clamp(x, 0.2 + r, W - 0.2 - r); z = clamp(z, 0.2 + r, D - 0.2 - r)
+  for (const b of obstacles) {
+    const cx = clamp(x, b.x0, b.x1), cz = clamp(z, b.z0, b.z1), dx = x - cx, dz = z - cz, d = Math.hypot(dx, dz)
+    if (d < r) {
+      if (d > 1e-6) { x = cx + dx / d * r; z = cz + dz / d * r }
+      else { const opts = [[b.x0 - r, z], [b.x1 + r, z], [x, b.z0 - r], [x, b.z1 + r]]; [x, z] = opts.sort((p, q) => Math.hypot(p[0] - x, p[1] - z) - Math.hypot(q[0] - x, q[1] - z))[0] }
+    }
+  }
+  return [x, z]
+}
+
+const HELP = {
+  orbit: 'Arraste para girar · roda/pinça para zoom · botão direito para mover',
+  top: 'Vista de planta — compare com a Prancheta 2D · arraste para mover, roda para zoom',
+  follow: 'Seguindo uma empilhadeira · <kbd>N</kbd> próxima · arraste para girar ao redor',
+  walk: isTouch ? 'Joystick para andar · arraste na tela para olhar' : 'Clique para capturar o mouse · <kbd>W A S D</kbd> andar · <kbd>Shift</kbd> correr · <kbd>Esc</kbd> soltar',
+  drive: isTouch ? 'Joystick: acelerar/virar · botões para o garfo' : '<kbd>W/S</kbd> acelerar/ré · <kbd>A/D</kbd> virar · <kbd>R/F</kbd> garfo · <kbd>V</kbd> cabine/externa · <kbd>Espaço</kbd> freio',
+}
+function setMode(m) {
+  mode = m
+  document.querySelectorAll('#modes button').forEach((b) => b.classList.toggle('on', b.dataset.mode === m))
+  document.getElementById('help').innerHTML = HELP[m]
+  const first = m === 'walk' || m === 'drive'
+  controls.enabled = !first
+  controls.enableRotate = m !== 'top'
+  document.getElementById('joy').style.display = first && isTouch ? 'block' : 'none'
+  document.getElementById('forkBtns').style.display = m === 'drive' && isTouch ? 'flex' : 'none'
+  document.getElementById('crosshair').style.display = m === 'walk' ? 'block' : 'none'
+  walker.g.visible = m !== 'walk'
+  if (m !== 'walk' && document.pointerLockElement) document.exitPointerLock()
+  if (m === 'orbit') { camera.position.set(W / 2 - 30, 42, D + 30); controls.target.set(W / 2, 0, D / 2) }
+  if (m === 'top') { camera.position.set(W / 2, 75, D / 2 + 0.01); controls.target.set(W / 2, 0, D / 2) }
+  if (isTouch && innerWidth < 760 && first) document.getElementById('panel').classList.add('hidden')
+}
+document.querySelectorAll('#modes button').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)))
+addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') return
+  keys.add(e.code)
+  if (e.code === 'KeyN' && mode === 'follow') followIdx++
+  if (e.code === 'KeyV' && mode === 'drive') cabin = !cabin
+  if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code) && (mode === 'walk' || mode === 'drive')) e.preventDefault()
+})
+addEventListener('keyup', (e) => keys.delete(e.code))
+addEventListener('blur', () => keys.clear())
+renderer.domElement.addEventListener('click', () => { if (mode === 'walk' && !isTouch) renderer.domElement.requestPointerLock?.() })
+addEventListener('mousemove', (e) => {
+  if (mode !== 'walk' || document.pointerLockElement !== renderer.domElement) return
+  walker.yaw -= e.movementX * 0.0025; walker.pitch = clamp(walker.pitch - e.movementY * 0.0025, -1.2, 1.2)
+})
+{ // olhar arrastando (toque ou mouse sem pointer lock)
+  let last = null
+  renderer.domElement.addEventListener('pointerdown', (e) => { if (mode === 'walk') last = { x: e.clientX, y: e.clientY } })
+  addEventListener('pointerup', () => (last = null))
+  addEventListener('pointermove', (e) => {
+    if (!last || mode !== 'walk' || document.pointerLockElement) return
+    walker.yaw -= (e.clientX - last.x) * 0.005; walker.pitch = clamp(walker.pitch - (e.clientY - last.y) * 0.005, -1.2, 1.2)
+    last = { x: e.clientX, y: e.clientY }
+  })
+}
+{ // joystick virtual
+  const el = document.getElementById('joy'), knob = document.getElementById('knob')
+  let id = null
+  const move = (e) => {
+    const r = el.getBoundingClientRect(), dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2)
+    const d = Math.min(1, Math.hypot(dx, dy) / 50), a = Math.atan2(dy, dx)
+    joy.x = Math.cos(a) * d; joy.y = Math.sin(a) * d
+    knob.style.transform = `translate(${joy.x * 35}px, ${joy.y * 35}px)`
+  }
+  el.addEventListener('pointerdown', (e) => { id = e.pointerId; el.setPointerCapture(id); move(e); e.stopPropagation() })
+  el.addEventListener('pointermove', (e) => { if (e.pointerId === id) move(e) })
+  const end = () => { id = null; joy.x = joy.y = 0; knob.style.transform = '' }
+  el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end)
+  for (const [btn, k] of [['forkUp', 'up'], ['forkDown', 'down']]) {
+    const b = document.getElementById(btn)
+    b.addEventListener('pointerdown', () => (forkBtn[k] = true))
+    for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => (forkBtn[k] = false))
+  }
+}
+const key = (...codes) => codes.some((c) => keys.has(c))
+
+function updateWalker(dt) {
+  const fwd = (key('KeyW', 'ArrowUp') ? 1 : 0) - (key('KeyS', 'ArrowDown') ? 1 : 0) - joy.y
+  const side = (key('KeyD', 'ArrowRight') ? 1 : 0) - (key('KeyA', 'ArrowLeft') ? 1 : 0) + joy.x
+  const sp = key('ShiftLeft', 'ShiftRight') ? 3.2 : 1.5
+  const fx = Math.sin(walker.yaw), fz = Math.cos(walker.yaw), rx = -fz, rz = fx
+  let x = walker.x + (fx * fwd + rx * side) * sp * dt, z = walker.z + (fz * fwd + rz * side) * sp * dt
+  for (const f of forklifts) { const d = Math.hypot(x - f.x, z - f.z); if (d < 1.3) { x = f.x + (x - f.x) / d * 1.3; z = f.z + (z - f.z) / d * 1.3 } }
+  ;[walker.x, walker.z] = collide(x, z, 0.3)
+  walker.g.position.set(walker.x, 0, walker.z); walker.g.rotation.y = walker.yaw
+}
+function updateUser(dt) {
+  const thr = (key('KeyW', 'ArrowUp') ? 1 : 0) - (key('KeyS', 'ArrowDown') ? 1 : 0) - joy.y
+  const steer = (key('KeyA', 'ArrowLeft') ? 1 : 0) - (key('KeyD', 'ArrowRight') ? 1 : 0) - joy.x
+  const target = thr > 0 ? 3.5 * thr : thr < 0 ? 1.5 * thr : 0
+  user.v += clamp(target - user.v, -(key('Space') ? 6 : 2.5) * dt, 1.5 * dt)
+  user.th = wrap(user.th + user.v * 0.55 * steer * dt)
+  const lift = (key('KeyR') || forkBtn.up ? 1 : 0) - (key('KeyF') || forkBtn.down ? 1 : 0)
+  user.h = clamp(user.h + lift * 0.45 * dt, 0.05, 5.2)
+  const nx = user.x + Math.sin(user.th) * user.v * dt, nz = user.z + Math.cos(user.th) * user.v * dt
+  let [x, z] = collide(nx, nz, 1.1)
+  for (const f of forklifts) { const d = Math.hypot(x - f.x, z - f.z); if (d < 2.2) { x = f.x + (x - f.x) / d * 2.2; z = f.z + (z - f.z) / d * 2.2 } }
+  if (Math.hypot(x - nx, z - nz) > 0.01) user.v *= 0.3
+  user.x = x; user.z = z
+  user.g.position.set(x, 0, z); user.g.rotation.y = user.th
+  user.forks.position.y = user.h; user.inner.position.y = Math.max(0, user.h - 1.9)
+}
+
+function updateCamera() {
+  if (mode === 'follow' && forklifts.length) {
+    const f = forklifts[followIdx % forklifts.length]
+    const fx = Math.sin(f.th), fz = Math.cos(f.th)
+    const want = new THREE.Vector3(f.x - fx * 7, 4.5, f.z - fz * 7)
+    camera.position.lerp(want, 0.08); controls.target.lerp(new THREE.Vector3(f.x + fx * 2, 1, f.z + fz * 2), 0.15)
+  }
+  if (mode === 'walk') {
+    camera.position.set(walker.x, 1.7, walker.z)
+    camera.rotation.set(walker.pitch, walker.yaw + Math.PI, 0, 'YXZ')
+  }
+  if (mode === 'drive') {
+    const fx = Math.sin(user.th), fz = Math.cos(user.th)
+    if (cabin) {
+      camera.position.set(user.x - fx * 0.45, 2.05, user.z - fz * 0.45)
+      camera.lookAt(user.x + fx * 5, 1.2 + user.h * 0.3, user.z + fz * 5)
+    } else {
+      camera.position.lerp(new THREE.Vector3(user.x - fx * 6.5, 4, user.z - fz * 6.5), 0.12)
+      camera.lookAt(user.x + fx * 3, 1, user.z + fz * 3)
+    }
+  }
+}
+
+// Alertas de segurança
+const alertEl = document.getElementById('alert')
+function updateAlert() {
+  let msg = '', cls = ''
+  if (mode === 'walk' || mode === 'drive') {
+    const me = mode === 'walk' ? walker : user
+    const near = forklifts.reduce((m, f) => Math.min(m, Math.hypot(f.x - me.x, f.z - me.z)), Infinity)
+    const inLane = (me.z > 26.5 && me.z < 31) || (me.z > 7.3 && me.z < 10) || (me.z >= 10 && me.z <= 26 && me.x > 3.9)
+    if (near < (mode === 'walk' ? 4 : 3.5)) msg = `⚠ Empilhadeira a ${near.toFixed(1)} m`
+    else if (mode === 'walk' && inLane) { msg = 'Você está em área de tráfego de empilhadeiras — use a faixa verde'; cls = 'warn' }
+    else if (mode === 'drive') { msg = `${(Math.abs(user.v) * 3.6).toFixed(1)} km/h · garfo ${user.h.toFixed(2)} m`; cls = 'warn' }
+  }
+  alertEl.style.display = msg ? 'block' : 'none'
+  alertEl.textContent = msg; alertEl.className = cls
+}
+
+// Minimapa
+const mm = document.getElementById('minimap'), mctx = mm.getContext('2d')
+function drawMinimap() {
+  const s = Math.min(mm.width / (W + 4), mm.height / (D + 4)), ox = (mm.width - W * s) / 2, oy = (mm.height - D * s) / 2
+  mctx.clearRect(0, 0, mm.width, mm.height)
+  mctx.fillStyle = '#d6d3cd'; mctx.fillRect(ox, oy, W * s, D * s)
+  for (const o of LAYOUT.objects) {
+    const { x, z, w, l } = toM(o)
+    if (o.category === 'area') { mctx.fillStyle = areaColor(o) + '55'; mctx.fillRect(ox + x * s, oy + z * s, w * s, l * s) }
+    if (o.objectType === 'rack') { mctx.fillStyle = '#1e3a8a'; mctx.fillRect(ox + x * s, oy + z * s, w * s, l * s) }
+    if (o.objectType === 'pedestrian-lane') { mctx.fillStyle = '#16a34a88'; mctx.fillRect(ox + x * s, oy + z * s, w * s, l * s) }
+  }
+  const dot = (x, z, th, color, r) => {
+    mctx.save(); mctx.translate(ox + x * s, oy + z * s); mctx.rotate(-th); mctx.fillStyle = color
+    mctx.beginPath(); mctx.moveTo(0, r * 1.6); mctx.lineTo(r, -r); mctx.lineTo(-r, -r); mctx.closePath(); mctx.fill(); mctx.restore()
+  }
+  for (const f of forklifts) dot(f.x, f.z, f.th, '#2563EB', 5)
+  dot(user.x, user.z, user.th, '#dc2626', 5)
+  dot(walker.x, walker.z, walker.yaw, '#f97316', 4.5)
+  if (mode === 'follow' && forklifts.length) {
+    const f = forklifts[followIdx % forklifts.length]
+    mctx.strokeStyle = '#fff'; mctx.lineWidth = 2; mctx.beginPath(); mctx.arc(ox + f.x * s, oy + f.z * s, 9, 0, 7); mctx.stroke()
+  }
+}
+
+// ============================================================================================
+// Painel
+// ============================================================================================
+const $ = (id) => document.getElementById(id)
+$('seed').textContent = P.seed
+const CTRL = { truck: (v) => `${v} min`, orders: (v) => v, forklifts: (v) => v, checkers: (v) => v, pickers: (v) => v, loaders: (v) => v }
+for (const k in CTRL) {
+  const input = $('p-' + k)
+  input.value = P[k]; $('v-' + k).textContent = CTRL[k](P[k])
+  input.addEventListener('input', () => {
+    P[k] = +input.value; $('v-' + k).textContent = CTRL[k](P[k])
+    if (k === 'forklifts') setForklifts(P[k])
+    if (k === 'checkers') checking.setCount(P[k])
+    if (k === 'pickers') picking.setCount(P[k])
+    if (k === 'loaders') loading.setCount(P[k])
+    if (k === 'orders') nextOrder = Math.min(nextOrder, simT + expo(3600 / P.orders))
+  })
+}
+let running = true, speed = 15
+$('play').onclick = () => { running = !running; $('play').textContent = running ? '⏸ Pausar' : '▶ Continuar' }
+$('reset').onclick = () => { const q = new URLSearchParams(); for (const k in P) q.set(k, k === 'seed' ? P.seed + 1 : P[k]); location.search = q }
+document.querySelectorAll('#speeds button').forEach((b) => b.addEventListener('click', () => {
+  speed = +b.dataset.speed; document.querySelectorAll('#speeds button').forEach((x) => x.classList.toggle('on', x === b))
+}))
+const toggle = (id, fn) => $(id).addEventListener('click', () => fn($(id).classList.toggle('on')))
+toggle('t-labels', (on) => ($('labels').style.display = on ? '' : 'none'))
+toggle('t-heat', (on) => { heatPlane.visible = on; if (on) updateHeat() })
+toggle('t-roof', (on) => (roof.visible = on))
+$('togglePanel').onclick = () => $('panel').classList.toggle('hidden')
+
+const areaLabelEl = {}
+for (const l of labels) areaLabelEl[l.element.textContent] = l.element
+const RES_AREA = { Conferência: 'Recebimento · Conferência', Empilhadeiras: 'Armazenagem', Separação: 'Picking', Expedição: 'Expedição' }
+function updatePanel() {
+  const hh = 6 * 3600 + simT, fmt = (n) => String(Math.floor(n)).padStart(2, '0')
+  $('clock').textContent = `${fmt((hh / 3600) % 24)}:${fmt((hh / 60) % 60)}:${fmt(hh % 60)}`
+  const win = Math.min(3600, Math.max(simT, 1))
+  const perH = (arr) => Math.round(arr.filter((t) => t > simT - 3600).length * 3600 / win)
+  stats.inTimes = stats.inTimes.filter((t) => t > simT - 3600); stats.outTimes = stats.outTimes.filter((t) => t > simT - 3600)
+  $('k-in').textContent = perH(stats.inTimes); $('k-out').textContent = perH(stats.outTimes)
+  $('k-lead').textContent = stats.leads.length ? (stats.leads.reduce((a, b) => a + b, 0) / stats.leads.length / 60).toFixed(1) : '—'
+  const stocked = slots.filter((s) => s.occupied).length
+  $('k-stock').textContent = Math.round(stocked / slots.length * 100) + '%'; $('k-stockn').textContent = `${stocked}/${slots.length}`
+  $('k-orders').textContent = orders.length
+  $('k-wip').textContent = checking.queue.length + readyQueue.length + picking.queue.length + pickedQueue.length + loading.queue.length +
+    [checking, picking, loading].reduce((n, s) => n + s.workers.filter((w) => w.job).length, 0) + forklifts.filter((f) => f.load).length
+  const rows = [
+    ['Conferência', checking.active, checking.queue.length, 'aguardando conferência'],
+    ['Empilhadeiras', forklifts.filter((f) => !f.retire).length, readyQueue.length + pickedQueue.length + Math.min(orders.length, freeOf(pickSpots).length), 'tarefas pendentes'],
+    ['Separação', picking.active, picking.queue.length, 'pallets no picking'],
+    ['Expedição', loading.active, loading.queue.length, 'aguardando carregamento'],
+  ]
+  const ranked = Object.entries(util).sort((a, b) => b[1] - a[1])
+  const hot = simT > 900 && ranked[0][1] > 0.45 ? ranked[0][0] : null
+  $('res').innerHTML = rows.map(([n, q, f, hint]) =>
+    `<tr class="${n === hot ? 'hot' : ''}" title="${hint}"><td>${n}</td><td>${q}</td><td><div class="bar"><i style="width:${Math.round(util[n] * 100)}%"></i></div> ${Math.round(util[n] * 100)}%</td><td>${f}</td></tr>`).join('')
+  for (const [n, a] of Object.entries(RES_AREA)) areaLabelEl[a]?.classList.toggle('hot', n === hot)
+  $('bottleneck').innerHTML = simT < 900 ? 'Coletando dados… (15 min simulados)'
+    : hot ? `<b>Gargalo: ${hot}</b> — ${Math.round(util[hot] * 100)}% de ocupação. ${hot === 'Empilhadeiras' ? 'Aumente a frota ou reduza deslocamentos.' : `Adicione ${hot === 'Conferência' ? 'conferentes' : hot === 'Separação' ? 'separadores' : 'expedidores'} e observe a fila cair.`}`
+    : 'Sem gargalo relevante: todos os recursos abaixo de 45% de ocupação.'
+  for (const [n, area] of Object.entries(RES_AREA)) {
+    const m = areaMeshes[area]; if (m) { m.material.opacity = n === hot ? 0.45 : 0.22; m.material.color.set(n === hot ? '#dc2626' : areaColor(LAYOUT.objects.find((o) => o.name === area))) }
+  }
+}
+
+// ============================================================================================
+// Loop
+// ============================================================================================
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix()
+  renderer.setSize(innerWidth, innerHeight); labelRenderer.setSize(innerWidth, innerHeight)
+})
+setMode('orbit')
+const clock = new THREE.Clock()
+let panelT = 0, heatT = 0, realT = 0
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.1)
+  realT += dt
+  if (running) {
+    let left = dt * speed
+    while (left > 1e-6) { const h = Math.min(0.05, left); simStep(h); left -= h }
+  }
+  if (mode === 'walk') updateWalker(dt)
+  if (mode === 'drive') updateUser(dt)
+  for (const f of forklifts) f.sync(simT)
+  for (const s of stations) for (const w of s.workers) w.sync(simT)
+  updateCamera()
+  if (controls.enabled) controls.update()
+  updateAlert()
+  drawMinimap()
+  if ((panelT += dt) > 0.3) { panelT = 0; updatePanel() }
+  if (heatPlane.visible && (heatT += dt) > 1) { heatT = 0; updateHeat() }
+  renderer.render(scene, camera)
+  labelRenderer.render(scene, camera)
+})
+window.__sim = { dbg: () => forklifts.map((f) => [f.cur?.type, f.task?.kind, f.x.toFixed(1), f.z.toFixed(1), f.seg, f.path?.length, f.wait.toFixed(1)]), fastForward: (s) => { for (let k = 0; k < s / 0.05; k++) simStep(0.05) }, get simT() { return simT }, stats, forklifts: () => forklifts, slots, util, setMode, P }
+</script>
+</body>
+</html>

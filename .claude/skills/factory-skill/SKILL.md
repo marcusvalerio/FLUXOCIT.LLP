@@ -6,7 +6,9 @@ description: Cria simulações 3D de fábricas, armazéns e centros de distribui
 # factory-skill — simulação 3D de uma fábrica / armazém
 
 Transforma um layout (de preferência um projeto do ARGUS.LLP) em uma cena 3D com a operação
-rodando. Saída: `simulations/factories/<slug>.html`, autônoma.
+rodando. Saída: `public/simulations/<slug>.html`, autônoma, servida no preview do Vercel em
+`/simulations/<slug>.html`; adicione um card em `public/simulations/index.html`. Exemplo de referência
+completo: `public/simulations/armazem-3d.html`.
 
 > É a camada SIMULATION do README: separada do editor, que continua 100% 2D. Não importe
 > nada de Three.js em `src/`. Para modelar uma máquina isolada em detalhe, use `machine-skill`;
@@ -52,7 +54,17 @@ Ordem de preferência:
 
 - Three.js 0.170.0 via import map do jsDelivr (igual à `machine-skill`), metros, Y para cima.
 - Use `InstancedMesh` para pallets/caixas e itens repetidos (milhares de pallets sem travar).
-- Câmeras: orbital, vista de cima (para comparar com o 2D) e seguir um agente.
+- Câmeras: orbital, planta (vista de cima, para comparar com o 2D) e seguir um agente.
+- **Navegação por dentro** (sempre incluir):
+  - *Andar*: 1ª pessoa a 1,70 m, `W A S D` + mouse com pointer lock, `Shift` corre; no celular,
+    joystick virtual + arrastar para olhar. Colisão com paredes, racks e máquinas.
+  - *Dirigir*: uma empilhadeira do usuário (fora da simulação), câmera externa ou de cabine
+    (`V`), garfo em `R/F`, mesma colisão.
+  - Empilhadeiras da simulação param diante de quem anda/dirige; alerta quando uma máquina está
+    a menos de 4 m ou quando a pessoa sai da faixa de pedestres para uma área de tráfego.
+  - Minimapa 2D no canto com a posição de todos.
+- Paredes e teto como planos com face só para dentro: de fora a câmera enxerga o interior, de
+  dentro o galpão é fechado.
 - Painel: play/pause/reset, velocidade da simulação, taxa de chegada, nº de agentes, toggles de
   camadas (estrutura, estoque, rotas, heatmap de tráfego no piso).
 - **KPIs ao vivo**: vazão por etapa, ocupação (%) de cada servidor/agente, tamanho e espera média
@@ -63,6 +75,8 @@ Ordem de preferência:
 
 - Playwright (Chromium em `/opt/pw-browsers`): screenshot, console sem erros, a simulação avança
   e os KPIs mudam com o tempo.
+- Teste também os modos Andar e Dirigir (simulando teclas) e rode horas simuladas em
+  avanço rápido para detectar travamentos (ex.: duas máquinas esperando uma pela outra).
 - Sanidade: a soma do que entra = o que sai + WIP; nenhum agente atravessa racks/paredes;
   vista de cima bate com o layout 2D original.
 

@@ -6,7 +6,9 @@ description: Cria simulações 3D interativas de máquinas e equipamentos (estei
 # machine-skill — simulação 3D de uma máquina
 
 Gera **uma** máquina em 3D, com suas partes móveis animadas e controles para operá-la.
-O resultado é um arquivo HTML autônomo em `simulations/machines/<slug>.html`.
+O resultado é um arquivo HTML autônomo em `public/simulations/<slug>.html` (o Vite copia `public/`
+para o build, então a página aparece no preview do Vercel em `/simulations/<slug>.html`). Adicione um
+card para ela em `public/simulations/index.html`. Exemplo de referência: `public/simulations/empilhadeira-3d.html`.
 
 > Regra do produto (docs/PRODUCT.md): o editor do ARGUS.LLP é e continua 2D. Simulações 3D são
 > uma camada **separada**: nunca adicione Three.js ao bundle de `src/` nem transforme a

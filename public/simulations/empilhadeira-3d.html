@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Empilhadeira 3D — ARGUS.LLP</title>
+<style>
+  :root { --panel: rgba(15, 23, 42, .86); --line: rgba(148, 163, 184, .25); --text: #e2e8f0; --muted: #94a3b8; --accent: #2563EB; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0f172a; color: var(--text);
+    font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  canvas { display: block; touch-action: none; }
+  #panel { position: fixed; top: 8px; left: 8px; width: 290px; max-height: calc(100vh - 16px); overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+  h1 { font-size: 15px; margin: 0 0 2px; }
+  h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 14px 0 6px; }
+  a { color: #93c5fd; }
+  .sub, .note { color: var(--muted); font-size: 12px; }
+  .ctl { display: grid; grid-template-columns: 90px 1fr 56px; gap: 6px; align-items: center; margin: 5px 0; }
+  .ctl b { text-align: right; }
+  button { background: rgba(51, 65, 85, .7); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font: inherit; cursor: pointer; }
+  button.on { background: var(--accent); border-color: var(--accent); }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+  .tile { background: rgba(30, 41, 59, .8); border-radius: 8px; padding: 6px; }
+  .tile small { display: block; color: var(--muted); font-size: 10px; }
+  .tile b { font-size: 16px; }
+  kbd { background: #334155; color: #fff; border-radius: 4px; padding: 0 5px; font: 11px monospace; }
+  #msg { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 6px 14px; font-weight: 600; }
+  @media (max-width: 760px) { #panel { top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 48vh; border-radius: 12px 12px 0 0; } }
+</style>
+</head>
+<body>
+<div id="msg">Pronta</div>
+<aside id="panel">
+  <h1>Empilhadeira contrabalançada</h1>
+  <div class="sub">machine-skill · ARGUS.LLP · <a href="./">outras simulações</a></div>
+
+  <h2>Operação</h2>
+  <div class="row">
+    <button id="auto">▶ Ciclo automático</button>
+    <button id="reset">↺ Reiniciar</button>
+  </div>
+  <div class="ctl"><label for="c-throttle">Acelerador</label><input id="c-throttle" type="range" min="-1" max="1" step="0.05" value="0"><b id="v-throttle"></b></div>
+  <div class="ctl"><label for="c-steer">Direção</label><input id="c-steer" type="range" min="-1" max="1" step="0.05" value="0"><b id="v-steer"></b></div>
+  <div class="ctl"><label for="c-lift">Garfo (alvo)</label><input id="c-lift" type="range" min="0" max="4.5" step="0.05" value="0.1"><b id="v-lift"></b></div>
+  <div class="ctl"><label for="c-tilt">Inclinação</label><input id="c-tilt" type="range" min="-3" max="6" step="0.5" value="0"><b id="v-tilt"></b></div>
+  <p class="note">Teclado: <kbd>W/S</kbd> acelerar/ré · <kbd>A/D</kbd> direção · <kbd>R/F</kbd> garfo · <kbd>T/G</kbd> inclinar · <kbd>Espaço</kbd> freio.
+    Para pegar o pallet, alinhe os garfos na altura das aberturas e avance.</p>
+
+  <h2>Telemetria</h2>
+  <div class="tiles">
+    <div class="tile"><small>Velocidade</small><b id="t-speed">0</b> km/h</div>
+    <div class="tile"><small>Altura do garfo</small><b id="t-h">0</b> m</div>
+    <div class="tile"><small>Inclinação do mastro</small><b id="t-tilt">0</b>°</div>
+    <div class="tile"><small>Carga</small><b id="t-load">0</b> kg</div>
+    <div class="tile"><small>Ciclos concluídos</small><b id="t-cycles">0</b></div>
+    <div class="tile"><small>Tempo do último ciclo</small><b id="t-ct">—</b> s</div>
+  </div>
+
+  <h2>Premissas</h2>
+  <div class="note">Empilhadeira elétrica 2,5 t · velocidade máx. 13 km/h (ré 6 km/h) · elevação 0,45 m/s (0,35 m/s com carga) ·
+    mastro duplex com elevação livre de 1,6 m · inclinação −3° a +6° · direção nas rodas traseiras, entre-eixos 1,45 m · pallet PBR 1,0 × 1,2 m com 900 kg ·
+    pessoa de referência com 1,75 m.</div>
+</aside>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three'
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v))
+const wrap = (a) => ((((a + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) - Math.PI
+
+// ---------------------------------------------------------------- cena
+const renderer = new THREE.WebGLRenderer({ antialias: true })
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight)
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap
+document.body.prepend(renderer.domElement)
+const scene = new THREE.Scene(); scene.background = new THREE.Color('#cbd5e1')
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.05, 200)
+camera.position.set(6, 4.5, 7)
+const controls = new OrbitControls(camera, renderer.domElement)
+controls.target.set(0, 1.2, 1); controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.495
+scene.add(new THREE.HemisphereLight('#ffffff', '#64748b', 1.5))
+const sun = new THREE.DirectionalLight('#ffffff', 2); sun.position.set(6, 12, 5); sun.castShadow = true
+sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12 })
+scene.add(sun)
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshStandardMaterial({ color: '#d6d3cd' }))
+floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor)
+const grid = new THREE.GridHelper(40, 40, '#94a3b8', '#b9b4ab'); grid.position.y = 0.002; scene.add(grid)
+
+const M = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.7, ...o })
+function box(w, h, l, m, x = 0, y = 0, z = 0, parent) {
+  const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, l), m); b.position.set(x, y, z); b.castShadow = b.receiveShadow = true
+  parent?.add(b); return b
+}
+const yellow = M('#f59e0b'), dark = M('#1f2937'), steel = M('#a1a1aa', { metalness: 0.7, roughness: 0.35 }), black = M('#111827')
+
+// ---------------------------------------------------------------- empilhadeira (frente = +z, origem no eixo dianteiro)
+// Hierarquia cinemática: truck → mastTilt (pivô no eixo dianteiro) → outer → inner (estágio 2) → carriage → garfos
+const truck = new THREE.Group(); scene.add(truck)
+const chassis = new THREE.Group(); truck.add(chassis)
+box(1.15, 0.55, 2.2, yellow, 0, 0.55, -0.75, chassis)                                  // chassi
+box(1.15, 0.75, 0.55, dark, 0, 0.75, -1.9, chassis)                                    // contrapeso
+box(1.15, 0.2, 1.2, yellow, 0, 0.92, -0.95, chassis)                                   // capô/bateria
+box(0.55, 0.12, 0.5, black, 0, 1.15, -0.95, chassis)                                   // assento
+box(0.55, 0.55, 0.1, black, 0, 1.45, -1.2, chassis)                                    // encosto
+const wheelSteer = box(0.05, 0.05, 0.05, black, 0, 1.45, -0.35, chassis)               // coluna de direção
+box(0.06, 0.6, 0.06, black, 0, 1.2, -0.3, chassis).rotation.x = -0.4
+const steeringWheel = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.025, 8, 24), black)
+steeringWheel.position.set(0, 1.5, -0.42); steeringWheel.rotation.x = -1.0; chassis.add(steeringWheel)
+for (const [x, z] of [[-0.52, -1.55], [0.52, -1.55], [-0.52, 0.0], [0.52, 0.0]]) box(0.07, 1.65, 0.07, dark, x, 1.75, z, chassis)  // proteção
+box(1.15, 0.06, 1.65, dark, 0, 2.58, -0.78, chassis)
+const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.07), new THREE.MeshBasicMaterial({ color: '#f97316' }))
+beacon.position.set(0, 2.68, -1.4); chassis.add(beacon)
+
+const wheelGeo = (r, w) => new THREE.CylinderGeometry(r, r, w, 20).rotateZ(Math.PI / 2)
+const hub = M('#6b7280')
+const frontWheels = [-0.52, 0.52].map((x) => { const w = new THREE.Group(); w.position.set(x, 0.33, 0); truck.add(w)
+  const t = new THREE.Mesh(wheelGeo(0.33, 0.24), black); t.castShadow = true; w.add(t); w.add(new THREE.Mesh(wheelGeo(0.15, 0.26), hub)); return w })
+const rearPivots = [-0.48, 0.48].map((x) => { const p = new THREE.Group(); p.position.set(x, 0.25, -1.45); truck.add(p)
+  const w = new THREE.Group(); p.add(w); const t = new THREE.Mesh(wheelGeo(0.25, 0.2), black); t.castShadow = true; w.add(t); w.add(new THREE.Mesh(wheelGeo(0.11, 0.22), hub))
+  return { p, w } })
+
+const mastTilt = new THREE.Group(); mastTilt.position.set(0, 0.33, 0.42); truck.add(mastTilt)
+const outer = new THREE.Group(); mastTilt.add(outer)
+for (const x of [-0.4, 0.4]) box(0.09, 2.3, 0.14, steel, x, 0.95 + 0.15, 0, outer)
+box(0.89, 0.08, 0.14, steel, 0, 2.25, 0, outer)
+const inner = new THREE.Group(); mastTilt.add(inner)
+for (const x of [-0.31, 0.31]) box(0.08, 2.25, 0.12, steel, x, 1.1, 0.1, inner)
+box(0.7, 0.08, 0.12, steel, 0, 2.2, 0.1, inner)
+const cylinder = box(0.08, 1.9, 0.08, M('#52525b', { metalness: 0.8 }), 0, 0.95, -0.08, outer)
+const carriage = new THREE.Group(); mastTilt.add(carriage)
+box(0.95, 0.55, 0.06, dark, 0, 0.3, 0.22, carriage)
+box(0.95, 0.9, 0.03, dark, 0, 0.95, 0.2, carriage).material = new THREE.MeshStandardMaterial({ color: '#1f2937', wireframe: true })
+const forkMeshes = [-0.32, 0.32].map((x) => box(0.12, 0.05, 1.15, steel, x, 0.025, 0.82, carriage))
+for (const x of [-0.32, 0.32]) box(0.12, 0.45, 0.05, steel, x, 0.22, 0.27, carriage)
+
+// ---------------------------------------------------------------- cenário: rack, pallets, pessoa de referência
+const RACK = { x: 0, z: 8, beam: 2.0 }
+const rackG = new THREE.Group(); rackG.position.set(RACK.x, 0, RACK.z); scene.add(rackG)
+for (const x of [-1.4, 1.4]) for (const z of [0, 1.1]) box(0.09, 4.2, 0.09, M('#1e3a8a'), x, 2.1, z, rackG)
+for (const y of [RACK.beam - 0.06, 4.0]) for (const z of [0, 1.1]) box(2.8, 0.12, 0.07, M('#f97316'), 0, y, z, rackG)
+for (const z of [0.25, 0.55, 0.85]) box(2.8, 0.03, 0.05, steel, 0, RACK.beam, z, rackG)
+
+function makePallet(color) {
+  const g = new THREE.Group()
+  const wood = M('#8B5E34')
+  for (const x of [-0.45, 0, 0.45]) box(0.1, 0.1, 1.2, wood, x, 0.07, 0, g)      // blocos/longarinas (aberturas para os garfos)
+  box(1.0, 0.025, 1.2, wood, 0, 0.0125, 0, g); box(1.0, 0.03, 1.2, wood, 0, 0.135, 0, g)
+  box(0.95, 0.95, 1.1, M(color), 0, 0.625, 0, g)
+  scene.add(g); return g
+}
+const PICK = { x: -4, z: 3 }
+const pallet = { g: makePallet('#c8a97e'), onForks: false, kg: 900, home: () => ({ x: PICK.x, y: 0, z: PICK.z, ry: 0 }) }
+
+const person = new THREE.Group()
+const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.95, 4, 10), M('#0D9488')); body.position.y = 0.72; body.castShadow = true
+const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 10), M('#e0b48c')); head.position.y = 1.62
+person.add(body, head); person.position.set(2.2, 0, 2.5); scene.add(person)
+const rule = box(0.04, 1.75, 0.04, M('#dc2626'), 2.6, 0.875, 2.5); scene.add(rule)
+
+// ---------------------------------------------------------------- estado (separado da renderização)
+const S = {}
+function reset() {
+  Object.assign(S, { x: PICK.x, z: -2.5, th: 0, v: 0, steer: 0, h: 0.1, tilt: 0, throttle: 0, liftTarget: 0.1, tiltTarget: 0,
+    wheelRot: 0, cycles: 0, cycleStart: null, lastCycle: null, auto: null })
+  pallet.onForks = false; scene.add(pallet.g); const h = pallet.home(); pallet.g.position.set(h.x, h.y, h.z); pallet.g.rotation.set(0, h.ry, 0)
+  syncUi()
+}
+const LIM = { vmax: 13 / 3.6, vrev: 6 / 3.6, acc: 1.0, brake: 2.5, wb: 1.45, steerMax: 0.95, hMax: 4.5, lift: 0.45, liftLoaded: 0.35, tiltMin: -3, tiltMax: 6 }
+
+// geometria derivada: posição mundial da ponta/meio dos garfos
+const _v = new THREE.Vector3()
+function forkPoint(local) { truck.updateMatrixWorld(true); return carriage.localToWorld(_v.set(...local)).clone() }
+
+function step(dt) {
+  // entrada de teclado tem prioridade sobre os sliders enquanto pressionada
+  const thr = keys.has('KeyW') ? 1 : keys.has('KeyS') ? -1 : S.throttle
+  const steerIn = keys.has('KeyA') ? 1 : keys.has('KeyD') ? -1 : +ui.steer.value
+  if (keys.has('KeyR')) S.liftTarget = clamp(S.h + 0.3, 0, LIM.hMax)
+  if (keys.has('KeyF')) S.liftTarget = clamp(S.h - 0.3, 0, LIM.hMax)
+  if (keys.has('KeyT')) S.tiltTarget = clamp(S.tiltTarget + 6 * dt, LIM.tiltMin, LIM.tiltMax)
+  if (keys.has('KeyG')) S.tiltTarget = clamp(S.tiltTarget - 6 * dt, LIM.tiltMin, LIM.tiltMax)
+  if (S.auto) autoStep(dt)
+  const auto = S.auto?.ctl
+  const throttle = auto ? auto.thr : thr, steer = auto ? auto.steer : steerIn
+
+  const target = throttle >= 0 ? throttle * LIM.vmax : throttle * LIM.vrev
+  const a = keys.has('Space') ? LIM.brake : Math.abs(target) < Math.abs(S.v) ? LIM.brake * 0.6 : LIM.acc
+  S.v += clamp(target - S.v, -a * dt, a * dt)
+  S.steer += clamp(steer * LIM.steerMax - S.steer, -1.5 * dt, 1.5 * dt)
+  // modelo de bicicleta com direção traseira: o eixo dianteiro (origem) segue tangente
+  S.th = wrap(S.th + (S.v / LIM.wb) * Math.tan(S.steer) * dt)
+  const nx = S.x + Math.sin(S.th) * S.v * dt, nz = S.z + Math.cos(S.th) * S.v * dt
+  if (!hitsRack(nx, nz)) { S.x = nx; S.z = nz } else S.v = 0
+  S.wheelRot += S.v * dt / 0.33
+
+  const rate = pallet.onForks ? LIM.liftLoaded : LIM.lift
+  S.h += clamp(S.liftTarget - S.h, -0.5 * dt, rate * dt)
+  S.tilt += clamp(S.tiltTarget - S.tilt, -3 * dt, 3 * dt)
+  handleLoad()
+}
+function hitsRack(x, z) {
+  // ponta do garfo e chassi não atravessam as colunas do rack (garfo passa entre as longarinas)
+  const pts = [[0, -1.9], [0, 0.45]].map(([px, pz]) => [x + Math.sin(S.th) * pz, z + Math.cos(S.th) * pz])
+  return pts.some(([px, pz]) => Math.abs(px - RACK.x) < 1.45 && pz > RACK.z - 0.05 && pz < RACK.z + 1.15)
+}
+function handleLoad() {
+  const tip = forkPoint([0, 0.05, 1.35]), mid = forkPoint([0, 0.05, 0.85])
+  if (!pallet.onForks) {
+    const p = pallet.g.position
+    const rel = new THREE.Vector3().subVectors(p, mid)
+    const fwd = new THREE.Vector3(Math.sin(S.th), 0, Math.cos(S.th))
+    const along = rel.dot(fwd), side = Math.abs(rel.x * fwd.z - rel.z * fwd.x)
+    const aligned = Math.abs(wrap(pallet.g.rotation.y - S.th)) < 0.15 || Math.abs(Math.abs(wrap(pallet.g.rotation.y - S.th)) - Math.PI) < 0.15
+    // garfos dentro das aberturas: alinhado, centralizado e com a altura entre a base e o tampo do pallet
+    if (aligned && side < 0.15 && Math.abs(along) < 0.25 && tip.y > p.y + 0.02 && tip.y < p.y + 0.12 && S.liftTarget > S.h + 0.02) {
+      pallet.onForks = true; carriage.attach(pallet.g); pallet.g.position.set(0, -0.035, 0.82); pallet.g.rotation.set(0, 0, 0)
+      if (S.cycleStart == null) S.cycleStart = performance.now()
+      msg('Pallet carregado')
+    }
+  } else if (S.liftTarget < S.h - 0.02) {
+    // ao baixar, o pallet assenta numa superfície: piso ou longarina do rack
+    scene.attach(pallet.g)
+    const p = pallet.g.position
+    const inRack = Math.abs(p.x - RACK.x) < 1.3 && p.z > RACK.z && p.z < RACK.z + 1.1
+    const support = inRack ? RACK.beam + 0.015 : 0
+    if (p.y <= support + 0.01) {
+      pallet.onForks = false; p.y = support; pallet.g.rotation.x = pallet.g.rotation.z = 0
+      if (inRack) { S.cycles++; if (S.cycleStart) S.lastCycle = (performance.now() - S.cycleStart) / 1000; S.cycleStart = null; msg('Pallet armazenado no rack ✔') }
+      else msg('Pallet no piso')
+    } else carriage.attach(pallet.g)
+  }
+}
+
+// ---------------------------------------------------------------- ciclo automático (sequência de comandos)
+function goTo(x, z, th, rev = false) {
+  return (dt) => {
+    const dx = x - S.x, dz = z - S.z, d = Math.hypot(dx, dz)
+    let want = Math.atan2(dx, dz); if (rev) want = wrap(want + Math.PI)
+    const err = wrap(want - S.th)
+    const steer = clamp(err * 2.5 * (rev ? -1 : 1), -1, 1)
+    if (d < 0.06) { S.auto.ctl = { thr: 0, steer: 0 }; return Math.abs(S.v) < 0.05 }
+    S.auto.ctl = { thr: (rev ? -1 : 1) * clamp(d * 0.35, 0.12, 0.6), steer }
+    return false
+  }
+}
+// aproximação final: segue a reta x = lx rumo a +z, corrigindo rumo e desvio lateral (Stanley simplificado)
+const goLine = (lx, lz) => () => {
+  const dz = lz - S.z
+  if (dz < 0.04) { S.auto.ctl = { thr: 0, steer: 0 }; return Math.abs(S.v) < 0.05 }
+  S.auto.ctl = { thr: clamp(dz * 0.35, 0.12, 0.6), steer: clamp(2 * wrap(0 - S.th) - 1.2 * (S.x - lx), -1, 1) }
+  return false
+}
+const liftTo = (h) => () => { S.liftTarget = h; S.auto.ctl = { thr: 0, steer: 0 }; return Math.abs(S.h - h) < 0.01 }
+const tiltTo = (t) => () => { S.tiltTarget = t; return Math.abs(S.tilt - t) < 0.1 }
+const waitFor = (t) => { let k = t; return (dt) => (k -= dt) <= 0 }
+function startAuto() {
+  reset()
+  // trajeto simplificado: alinhar no eixo do pallet, entrar, levantar, levar ao rack
+  S.auto = { i: 0, ctl: { thr: 0, steer: 0 }, seq: [
+    liftTo(0.04),
+    goTo(PICK.x, PICK.z - 2.6),
+    goLine(PICK.x, PICK.z - 1.24),
+    () => { S.liftTarget = 0.25; S.auto.ctl = { thr: 0, steer: 0 }; return pallet.onForks && S.h > 0.24 },
+    tiltTo(4),
+    goTo(PICK.x, PICK.z - 2.4, 0, true),
+    goTo(RACK.x - 1.8, RACK.z - 4.8),
+    goLine(RACK.x, RACK.z - 2.4),
+    tiltTo(0),
+    liftTo(RACK.beam + 0.15),
+    goLine(RACK.x, RACK.z - 0.7),
+    waitFor(0.4),
+    () => { S.liftTarget = RACK.beam - 0.1; S.auto.ctl = { thr: 0, steer: 0 }; return !pallet.onForks && S.h < RACK.beam - 0.05 },
+    goTo(RACK.x, RACK.z - 2.6, 0, true),
+    liftTo(0.1),
+    () => { S.auto = null; ui.auto.classList.remove('on'); msg(`Ciclo concluído (${S.lastCycle?.toFixed(1) ?? '—'} s)`); return true },
+  ] }
+}
+function autoStep(dt) {
+  const fn = S.auto.seq[S.auto.i]
+  if (!fn) { S.auto = null; return }
+  if (fn(dt)) S.auto && S.auto.i++
+}
+
+// ---------------------------------------------------------------- render
+function sync() {
+  truck.position.set(S.x, 0, S.z); truck.rotation.y = S.th
+  frontWheels.forEach((w) => (w.rotation.x = S.wheelRot))
+  rearPivots.forEach(({ p, w }) => { p.rotation.y = -S.steer; w.rotation.x = S.wheelRot * 0.33 / 0.25 })
+  steeringWheel.rotation.z = S.steer * 3
+  mastTilt.rotation.x = -THREE.MathUtils.degToRad(S.tilt)
+  // elevação livre: o carro sobe até 1,6 m sem o estágio interno; depois o estágio sobe junto
+  const FREE = 1.6
+  inner.position.y = Math.max(0, S.h - FREE)
+  carriage.position.y = S.h - mastTilt.position.y   // h = altura da face inferior do garfo em relação ao piso
+  cylinder.scale.y = 1 + Math.max(0, S.h - FREE) / 1.9; cylinder.position.y = 0.95 * cylinder.scale.y
+  beacon.visible = Math.abs(S.v) > 0.05 && Math.floor(performance.now() / 300) % 2 === 0
+}
+const $ = (id) => document.getElementById(id)
+const ui = { throttle: $('c-throttle'), steer: $('c-steer'), lift: $('c-lift'), tilt: $('c-tilt'), auto: $('auto') }
+function syncUi() { ui.throttle.value = 0; ui.steer.value = 0; ui.lift.value = 0.1; ui.tilt.value = 0 }
+ui.throttle.oninput = () => (S.throttle = +ui.throttle.value)
+ui.lift.oninput = () => (S.liftTarget = +ui.lift.value)
+ui.tilt.oninput = () => (S.tiltTarget = +ui.tilt.value)
+ui.auto.onclick = () => { ui.auto.classList.add('on'); startAuto() }
+$('reset').onclick = () => { reset(); ui.auto.classList.remove('on') }
+let msgT = 0
+function msg(t) { $('msg').textContent = t; msgT = 3 }
+const keys = new Set()
+addEventListener('keydown', (e) => { if (e.target.tagName !== 'INPUT') { keys.add(e.code); if (S.auto && /Key[WSAD]/.test(e.code)) { S.auto = null; ui.auto.classList.remove('on') } } })
+addEventListener('keyup', (e) => keys.delete(e.code))
+addEventListener('blur', () => keys.clear())
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight) })
+
+reset()
+const clock = new THREE.Clock()
+let hudT = 0
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05)
+  step(dt); sync()
+  controls.target.lerp(new THREE.Vector3(S.x, 1.2, S.z), 0.05)
+  controls.update()
+  if ((hudT += dt) > 0.1) {
+    hudT = 0
+    $('t-speed').textContent = (Math.abs(S.v) * 3.6).toFixed(1); $('t-h').textContent = S.h.toFixed(2)
+    $('t-tilt').textContent = S.tilt.toFixed(1); $('t-load').textContent = pallet.onForks ? pallet.kg : 0
+    $('t-cycles').textContent = S.cycles; $('t-ct').textContent = S.lastCycle ? S.lastCycle.toFixed(1) : '—'
+    $('v-throttle').textContent = (+ui.throttle.value).toFixed(2); $('v-steer').textContent = (+ui.steer.value).toFixed(2)
+    $('v-lift').textContent = (+ui.lift.value).toFixed(2) + ' m'; $('v-tilt').textContent = ui.tilt.value + '°'
+  }
+  if (msgT > 0 && (msgT -= dt) <= 0) $('msg').textContent = S.auto ? 'Ciclo automático…' : 'Pronta'
+  renderer.render(scene, camera)
+})
+window.__sim = { S, pallet, startAuto }
+</script>
+</body>
+</html>
