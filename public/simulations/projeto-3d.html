@@ -1,0 +1,986 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Projeto em 3D — ARGUS.LLP</title>
+<style>
+  :root { --panel: rgba(15, 23, 42, .86); --line: rgba(148, 163, 184, .25); --text: #e2e8f0; --muted: #94a3b8; --accent: #2563EB; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0f172a; color: var(--text);
+    font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  #app { position: fixed; inset: 0; }
+  #app canvas { display: block; touch-action: none; }
+  #labels { position: fixed; inset: 0; pointer-events: none; }
+  .lbl { padding: 2px 8px; border-radius: 999px; color: #fff; font-size: 11px; font-weight: 600; white-space: nowrap; box-shadow: 0 1px 4px rgba(0,0,0,.35); }
+  button { background: rgba(51, 65, 85, .75); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font: inherit; cursor: pointer; white-space: nowrap; }
+  button:hover { background: rgba(71, 85, 105, .9); }
+  button.on { background: var(--accent); border-color: var(--accent); }
+  #modes { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; padding: 4px; z-index: 5;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; max-width: calc(100vw - 16px); overflow-x: auto; }
+  #info { position: fixed; top: 8px; left: 8px; width: 250px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; z-index: 4; }
+  #info h1 { font-size: 14px; margin: 0 0 6px; }
+  #info dl { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; margin: 0; }
+  #info dt { color: var(--muted); } #info dd { margin: 0; font-weight: 600; text-align: right; }
+  #info .warn { margin-top: 8px; color: #fcd34d; font-size: 12px; }
+  #info .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  #alert { position: fixed; top: 58px; left: 50%; transform: translateX(-50%); padding: 8px 14px; border-radius: 10px; background: rgba(220, 38, 38, .92); font-weight: 600; z-index: 6; display: none; }
+  #alert.warn { background: rgba(217, 119, 6, .92); }
+  #help { position: fixed; bottom: 8px; left: 50%; transform: translateX(-50%); padding: 6px 12px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); z-index: 5; max-width: calc(100vw - 230px); text-align: center; }
+  #help kbd { background: #334155; color: #fff; border-radius: 4px; padding: 0 5px; font: 11px monospace; }
+  #minimap { position: fixed; right: 8px; bottom: 8px; width: 210px; height: 140px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); z-index: 5; }
+  #joy { position: fixed; left: 24px; bottom: 24px; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,.12); border: 2px solid rgba(255,255,255,.3); z-index: 7; display: none; touch-action: none; }
+  #knob { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,.55); }
+  #forkBtns { position: fixed; right: 16px; bottom: 160px; display: none; flex-direction: column; gap: 8px; z-index: 7; }
+  #forkBtns button { padding: 12px 16px; }
+  #crosshair { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px; border-radius: 50%; background: rgba(255,255,255,.8); display: none; z-index: 5; pointer-events: none; }
+  #editbar { position: fixed; bottom: 8px; left: 50%; transform: translateX(-50%); display: none; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center;
+    padding: 8px 10px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); z-index: 6; max-width: calc(100vw - 240px); }
+  #editbar .sel { display: flex; flex-direction: column; min-width: 150px; } #editbar small { color: var(--muted); }
+  #editbar .acts { display: flex; gap: 4px; }
+  #editbar select { background: rgba(51, 65, 85, .75); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; }
+  button.danger { border-color: rgba(220, 38, 38, .6); } button:disabled { opacity: .45; cursor: default; }
+  @media (max-width: 760px) { #editbar { max-width: calc(100vw - 16px); bottom: 8px; } }
+  #empty { position: fixed; inset: 0; display: none; place-items: center; text-align: center; padding: 24px; z-index: 8; background: #0f172a; }
+  #empty a { color: #93c5fd; }
+  @media (max-width: 760px) { #info { display: none; } #info.open { display: block; top: 56px; } #help { display: none; } #minimap { width: 140px; height: 94px; top: 56px; bottom: auto; } #infoBtn { display: inline-block !important; } }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="labels"></div>
+<div id="crosshair"></div>
+<header id="modes">
+  <button data-mode="orbit" class="on">🛰 Órbita</button>
+  <button data-mode="top">🗺 Planta</button>
+  <button data-mode="follow">🎥 Seguir</button>
+  <button data-mode="walk">🚶 Andar</button>
+  <button data-mode="drive">🚜 Dirigir</button>
+  <button data-mode="edit" id="editBtn" style="display:none">✏️ Editar</button>
+  <button id="infoBtn" style="display:none">ℹ</button>
+</header>
+<aside id="info">
+  <h1 id="pname">Projeto</h1>
+  <dl>
+    <dt>Ambiente</dt><dd id="i-env">—</dd>
+    <dt>Objetos</dt><dd id="i-obj">0</dd>
+    <dt>Posições de pallet</dt><dd id="i-pos">0</dd>
+    <dt>Rotas do Fluxo animadas</dt><dd id="i-routes">0</dd>
+  </dl>
+  <div id="i-warn" class="warn"></div>
+  <div class="row">
+    <button id="t-anim" class="on">⏸ Animação</button>
+    <button id="t-labels" class="on">Rótulos</button>
+    <button id="t-roof" class="on">Teto</button>
+  </div>
+</aside>
+<div id="alert"></div>
+<div id="editbar">
+  <div class="sel"><b id="e-name">Nenhum objeto selecionado</b><small id="e-meta">Clique em um objeto para selecionar</small></div>
+  <div class="acts">
+    <button id="e-rotl" title="Girar 90° (Q)">⟲ 90°</button>
+    <button id="e-rotr" title="Girar 90° (E)">⟳ 90°</button>
+    <button id="e-dup" title="Duplicar (Ctrl+D)">⧉ Duplicar</button>
+    <button id="e-del" title="Excluir (Delete)" class="danger">🗑 Excluir</button>
+  </div>
+  <div class="acts">
+    <select id="e-add" aria-label="Adicionar objeto">
+      <option value="">＋ Adicionar…</option>
+      <option value="rack">Porta-paletes</option>
+      <option value="pallet">Pallet</option>
+      <option value="storage-block">Blocado</option>
+      <option value="shelf">Estante</option>
+      <option value="forklift">Empilhadeira</option>
+      <option value="conveyor">Esteira</option>
+      <option value="column">Coluna</option>
+      <option value="wall">Parede</option>
+      <option value="area">Área</option>
+    </select>
+    <button id="e-undo" title="Desfazer (Ctrl+Z)">↶</button>
+    <button id="e-redo" title="Refazer (Ctrl+Shift+Z)">↷</button>
+  </div>
+</div>
+<div id="help"></div>
+<canvas id="minimap" width="420" height="280"></canvas>
+<div id="joy"><div id="knob"></div></div>
+<div id="forkBtns"><button id="forkUp">▲ Garfo</button><button id="forkAuto">⇕ Ajustar</button><button id="forkDown">▼ Garfo</button></div>
+<div id="empty"><div><h2>Nenhum projeto carregado</h2><p>Abra um projeto no ARGUS.LLP e use a aba <b>3D</b>.<br>
+  Ou veja a <a href="armazem-3d.html">simulação de demonstração</a>.</p></div></div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+// Visualizador 3D de um projeto do ARGUS.LLP (Layout + Fluxo). Recebe o projeto do editor via
+// postMessage (aba 3D) ou, aberto em outra aba, do localStorage. O editor continua 2D: isto só lê.
+import * as THREE from 'three'
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js'
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
+
+const STORAGE_KEY = 'argus:3d-project'
+const ROOF_H = 9
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v))
+const wrap = (a) => ((((a + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) - Math.PI
+const angDiff = (a, b) => wrap(a - b)
+function hash(str) { let h = 2166136261; for (const c of str) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0 }
+function rng(seed) { let a = seed; return () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296 } }
+
+// Cores do app (src/shared/lib/colors.ts e types/flow.ts)
+const AREA_COLORS = { receiving: '#0D9488', shipping: '#2563EB', picking: '#7C3AED', staging: '#D97706', quarantine: '#DC2626',
+  returns: '#DB2777', storage: '#B45309', circulation: '#64748B', administrative: '#0EA5E9', custom: '#334155', inspection: '#0EA5E9' }
+const AREA_LABELS = { receiving: 'Recebimento', shipping: 'Expedição', picking: 'Picking', staging: 'Staging', quarantine: 'Quarentena',
+  returns: 'Devolução', storage: 'Armazenagem', circulation: 'Circulação', administrative: 'Administrativo', custom: 'Área', inspection: 'Conferência' }
+const AREA_SUBTYPE = { 'area-picking': 'picking', 'area-staging': 'staging', 'area-inspection': 'inspection', 'area-shipping': 'shipping', 'area-receiving': 'receiving' }
+const PALLET_COLORS = ['#c8a97e', '#b98f5c', '#d6c29a', '#a77b4f', '#9fb7c9', '#bfa58a']
+
+// ---------------------------------------------------------------- renderer / cena
+const renderer = new THREE.WebGLRenderer({ antialias: true })
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight)
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05
+document.getElementById('app').appendChild(renderer.domElement)
+const labelRenderer = new CSS2DRenderer({ element: document.getElementById('labels') })
+labelRenderer.setSize(innerWidth, innerHeight)
+const scene = new THREE.Scene()
+scene.background = new THREE.Color('#a9bccf')
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.05, 1000)
+const controls = new OrbitControls(camera, renderer.domElement)
+controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.49
+scene.add(new THREE.HemisphereLight('#ffffff', '#6b7280', 1.6))
+const sun = new THREE.DirectionalLight('#ffffff', 1.6); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048)
+scene.add(sun, sun.target)
+// reflexos suaves de um ambiente interno: metais e plásticos deixam de parecer chapados
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture
+scene.environmentIntensity = 0.35
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), new THREE.MeshStandardMaterial({ color: '#7c8a76' }))
+ground.rotation.x = -Math.PI / 2; ground.position.y = -0.02; ground.receiveShadow = true; scene.add(ground)
+
+const M = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.8, ...o })
+let root = new THREE.Group(); scene.add(root)
+let W = 40, D = 30
+let obstacles = []   // OBB: { cx, cz, hw, hl, c, s }
+let agents = []
+let conveyorItems = []
+let roof = null
+let stats = { objects: 0, positions: 0, routes: 0, unlinked: 0 }
+let objInfo = []   // { id, o, f, h } — usado para selecionar/editar no 3D
+
+// ---------------------------------------------------------------- caixas instanciadas (estática inteira em 1 draw call)
+const unitBox = new THREE.BoxGeometry(1, 1, 1)
+let boxes = []
+// Pallets são entidades (podem ser pegos e movidos); as posições de rack/piso onde podem
+// ficar são "slots". Pallets parados são instâncias; o que está no garfo vira malha própria.
+let pallets = [], slots = [], palletInst = null, carrying = null
+function toWorld(f, x, z) { return { x: f.cx + x * Math.cos(f.th) + z * Math.sin(f.th), z: f.cz - x * Math.sin(f.th) + z * Math.cos(f.th) } }
+function addSlot(f, x, y, z) { const w = toWorld(f, x, z); const sl = { x: w.x, y, z: w.z, rot: f.th, pallet: null }; slots.push(sl); return sl }
+function addPallet(f, x, y, z, w, d, lh, color, slot = null) {
+  const p = toWorld(f, x, z)
+  const pl = { x: p.x, y, z: p.z, rot: f.th, w, d, lh, color, slot, mesh: null, idx: pallets.length }
+  if (slot) slot.pallet = pl
+  pallets.push(pl); return pl
+}
+const _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3(), _c = new THREE.Color()
+function objFrame(o) {
+  const w = o.width / 100, l = o.length / 100
+  const th = -THREE.MathUtils.degToRad(o.rotationDeg || 0)
+  const cx = (o.x + o.width / 2) / 100, cz = (o.y + o.length / 2) / 100
+  return { w, l, th, cx, cz, m: new THREE.Matrix4().compose(_p.set(cx, 0, cz), _q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), th), _s.set(1, 1, 1)) }
+}
+function B(f, x, y, z, sx, sy, sz, color) {   // caixa no referencial do objeto; y = base
+  const local = new THREE.Matrix4().compose(_p.set(x, y + sy / 2, z), _q.identity(), _s.set(sx, sy, sz))
+  boxes.push([f.m.clone().multiply(local), color])
+}
+function flushBoxes() {
+  const im = new THREE.InstancedMesh(unitBox, M('#ffffff'), Math.max(1, boxes.length))
+  boxes.forEach(([m, c], i) => { im.setMatrixAt(i, m); im.setColorAt(i, _c.set(c)) })
+  im.count = boxes.length; im.castShadow = im.receiveShadow = true
+  root.add(im)
+}
+const woodMat = M('#8B5E34', { roughness: 0.9 })
+function palletMatrices(p, base, load) {
+  _q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), p.rot)
+  base.compose(_p.set(p.x, p.y + 0.07, p.z), _q, _s.set(p.w, 0.14, p.d))
+  load.compose(_p.set(p.x, p.y + 0.14 + p.lh / 2, p.z), _q, _s.set(p.w - 0.05, p.lh, p.d - 0.1))
+}
+function buildPallets() {
+  const n = Math.max(1, pallets.length)
+  const base = new THREE.InstancedMesh(unitBox, woodMat, n), load = new THREE.InstancedMesh(unitBox, M('#ffffff', { roughness: 0.75 }), n)
+  const mb = new THREE.Matrix4(), ml = new THREE.Matrix4()
+  pallets.forEach((p, i) => { palletMatrices(p, mb, ml); base.setMatrixAt(i, mb); load.setMatrixAt(i, ml); load.setColorAt(i, _c.set(p.color)) })
+  base.count = load.count = pallets.length
+  for (const im of [base, load]) { im.castShadow = im.receiveShadow = true; root.add(im) }
+  palletInst = { base, load }
+}
+const ZERO = new THREE.Matrix4().makeScale(0, 0, 0)
+function hideInstance(p) { palletInst.base.setMatrixAt(p.idx, ZERO); palletInst.load.setMatrixAt(p.idx, ZERO); palletInst.base.instanceMatrix.needsUpdate = palletInst.load.instanceMatrix.needsUpdate = true }
+function showInstance(p) {
+  const mb = new THREE.Matrix4(), ml = new THREE.Matrix4(); palletMatrices(p, mb, ml)
+  palletInst.base.setMatrixAt(p.idx, mb); palletInst.load.setMatrixAt(p.idx, ml); palletInst.base.instanceMatrix.needsUpdate = palletInst.load.instanceMatrix.needsUpdate = true
+}
+function palletMesh(p) {   // origem no centro da base, profundidade ao longo de z local
+  const g = new THREE.Group()
+  const b = new THREE.Mesh(unitBox, woodMat); b.scale.set(p.w, 0.14, p.d); b.position.y = 0.07
+  const l = new THREE.Mesh(unitBox, M(p.color, { roughness: 0.75 })); l.scale.set(p.w - 0.05, p.lh, p.d - 0.1); l.position.y = 0.14 + p.lh / 2
+  b.castShadow = l.castShadow = true; g.add(b, l); return g
+}
+function obstacle(f, pad = 0) { obstacles.push({ cx: f.cx, cz: f.cz, hw: f.w / 2 + pad, hl: f.l / 2 + pad, c: Math.cos(f.th), s: -Math.sin(f.th) }) }
+function label(text, color, x, y, z) {
+  const el = document.createElement('div'); el.className = 'lbl'; el.textContent = text; el.style.background = color
+  const o = new CSS2DObject(el); o.position.set(x, y, z); root.add(o)
+}
+function floorPlane(f, color, opacity, y = 0.012) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(f.w, f.l), new THREE.MeshStandardMaterial({ color, transparent: true, opacity, depthWrite: false }))
+  m.rotation.set(-Math.PI / 2, f.th, 0, 'YXZ')
+  m.position.set(f.cx, y, f.cz); m.receiveShadow = true; root.add(m)
+  const e = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(f.w, f.l)), new THREE.LineBasicMaterial({ color }))
+  e.rotation.copy(m.rotation); e.position.set(f.cx, y + 0.003, f.cz); root.add(e)
+  return m
+}
+
+// ---------------------------------------------------------------- construtores por objectType
+function rackLike(o, f, kind) {
+  const R = rng(hash(o.id))
+  const shelf = kind === 'shelf'
+  const levels = clamp(+o.properties?.levels || 3, 1, 10)
+  const levelH = shelf ? 0.5 : 1.55
+  const bays = clamp(+o.properties?.bays || Math.max(1, Math.round(f.w / (shelf ? 1.2 : 2.7))), 1, 60)
+  const bayLen = f.w / bays, H = levels * levelH + (shelf ? 0.1 : 0.4)
+  const upr = shelf ? '#64748b' : '#1e3a8a', beam = shelf ? '#94a3b8' : kind === 'flow-rack' ? '#16a34a' : '#f97316'
+  for (let b = 0; b <= bays; b++) for (const z of [-f.l / 2 + 0.05, f.l / 2 - 0.05]) B(f, -f.w / 2 + b * bayLen, 0, z, 0.09, H, 0.09, upr)
+  for (let b = 0; b < bays; b++) {
+    const bx = -f.w / 2 + b * bayLen + bayLen / 2
+    for (let lv = 1; lv <= levels; lv++) for (const z of [-f.l / 2 + 0.05, f.l / 2 - 0.05]) B(f, bx, lv * levelH - 0.1, z, bayLen - 0.1, 0.1, 0.07, beam)
+    if (shelf) for (let lv = 0; lv < levels; lv++) B(f, bx, lv * levelH + 0.02, 0, bayLen - 0.1, 0.03, f.l - 0.1, '#cbd5e1')
+    const per = shelf ? 2 : Math.max(1, Math.floor(bayLen / 1.3)), slotW = bayLen / per
+    for (let lv = 0; lv < levels; lv++) for (let k = 0; k < per; k++) {
+      stats.positions += shelf ? 0 : 1
+      const x = bx - bayLen / 2 + slotW * (k + 0.5), y = lv * levelH
+      const pw = Math.min(1.0, slotW - 0.15), pd = Math.min(1.2, f.l - 0.1)
+      const slot = shelf ? null : addSlot(f, x, y, 0)
+      const occupied = R() <= 0.72, col = PALLET_COLORS[Math.floor(R() * PALLET_COLORS.length)], lh = Math.min(1.0 + R() * 0.2, levelH - 0.35)
+      if (!occupied) continue
+      if (shelf) { B(f, x, y + 0.05, 0, pw * 0.8, 0.35, pd * 0.7, col); continue }
+      addPallet(f, x, y, 0, pw, pd, lh, kind === 'cantilever' ? '#78716c' : col, slot)
+    }
+  }
+  obstacle(f)
+}
+const FLAT = new Set(['area', 'area-picking', 'area-staging', 'area-inspection', 'area-shipping', 'area-receiving', 'corridor', 'traffic-lane',
+  'flow-route', 'intersection', 'pedestrian-lane', 'safety-zone', 'directional-arrow', 'dock', 'scale'])
+function objHeight(o, f) {
+  const t = o.objectType
+  if (FLAT.has(t)) return 0.05
+  if (['rack', 'drive-in', 'push-back', 'flow-rack', 'cantilever'].includes(t)) return clamp(+o.properties?.levels || 3, 1, 10) * 1.55 + 0.4
+  if (t === 'shelf') return clamp(+o.properties?.levels || 3, 1, 10) * 0.5 + 0.1
+  if (t === 'storage-block') return clamp(+o.properties?.levels || 3, 1, 6) * 1.16
+  return { wall: +o.properties?.height || 6, column: ROOF_H, gate: 4.5, door: 2.4, stairs: 1.8, container: 2.6, forklift: 2.6, 'reach-truck': 4, 'order-picker': 2.6, tug: 1.1 }[t] ?? 1.2
+}
+function vehicle(f, color, kind) {
+  const g = makeForklift(color, kind)
+  g.g.position.set(f.cx, 0, f.cz); g.g.rotation.y = f.th + Math.PI / 2   // no 2D o comprimento da máquina é a largura do objeto
+  root.add(g.g); obstacle(f)
+}
+function build(project) {
+  scene.remove(root); root = new THREE.Group(); scene.add(root)
+  // remover o grupo não dispara 'removed' nos rótulos filhos: os elementos HTML ficariam órfãos
+  document.querySelectorAll('#labels .lbl').forEach((el) => el.remove())
+  boxes = []; obstacles = []; agents = []; conveyorItems = []; pallets = []; slots = []; carrying = null; user.load = null; stats = { objects: 0, positions: 0, routes: 0, unlinked: 0 }
+  W = Math.max(1, project.widthM || 40); D = Math.max(1, project.heightM || 30)
+  const objects = project.objects || []
+  stats.objects = objects.length
+
+  // casca do galpão: planos com face só para dentro (de fora a câmera vê o interior)
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), M('#d6d3cd'))
+  floor.rotation.x = -Math.PI / 2; floor.position.set(W / 2, 0, D / 2); floor.receiveShadow = true; root.add(floor)
+  const pts = []
+  for (let x = 0; x <= W + 1e-6; x += 1) pts.push(x, 0.004, 0, x, 0.004, D)
+  for (let z = 0; z <= D + 1e-6; z += 1) pts.push(0, 0.004, z, W, 0.004, z)
+  const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3))
+  root.add(new THREE.LineSegments(gg, new THREE.LineBasicMaterial({ color: '#c4bfb5' })))
+  for (const [len, rot, x, z] of [[W, 0, W / 2, 0], [W, Math.PI, W / 2, D], [D, Math.PI / 2, 0, D / 2], [D, -Math.PI / 2, W, D / 2]]) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(len, ROOF_H), M('#e5e7eb')); m.rotation.y = rot; m.position.set(x, ROOF_H / 2, z); m.receiveShadow = true; root.add(m)
+  }
+  roof = new THREE.Mesh(new THREE.PlaneGeometry(W, D), M('#9ca3af')); roof.rotation.x = Math.PI / 2; roof.position.set(W / 2, ROOF_H, D / 2)
+  roof.visible = document.getElementById('t-roof').classList.contains('on'); root.add(roof)
+
+  objInfo = []
+  for (const o of objects) {
+    const f = objFrame(o), t = o.objectType
+    objInfo.push({ id: o.id, o, f, h: objHeight(o, f) })
+    const area = t === 'area' ? (o.properties?.areaType || 'custom') : AREA_SUBTYPE[t]
+    if (area) {
+      const color = AREA_COLORS[area] || '#334155'
+      floorPlane(f, color, 0.25)
+      label(o.name || AREA_LABELS[area] || 'Área', color, f.cx, 0.3, f.cz)
+      continue
+    }
+    switch (t) {
+      case 'rack': case 'drive-in': case 'push-back': case 'flow-rack': case 'cantilever': case 'shelf': rackLike(o, f, t); break
+      case 'storage-block': {
+        const R = rng(hash(o.id)), nx = Math.max(1, Math.floor(f.w / 1.1)), nz = Math.max(1, Math.floor(f.l / 1.3)), lv = clamp(+o.properties?.levels || 3, 1, 6)
+        for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
+          const h = 1 + Math.floor(R() * lv); stats.positions += lv
+          const x = -f.w / 2 + (i + 0.5) * f.w / nx, z = -f.l / 2 + (j + 0.5) * f.l / nz
+          for (let k = 0; k < lv; k++) {
+            const slot = addSlot(f, x, k * 1.16, z)
+            if (k < h) addPallet(f, x, k * 1.16, z, 1.0, 1.2, 1.0, PALLET_COLORS[(i + j + k) % PALLET_COLORS.length], slot)
+          }
+        }
+        obstacle(f); break
+      }
+      case 'pallet': case 'box': case 'container': case 'cage-pallet': {
+        const h = t === 'container' ? 2.6 : t === 'box' ? Math.min(f.w, f.l) : 1.1
+        // pallet solto: pode ser pego, então não vira obstáculo (o garfo precisa entrar nele)
+        if (t === 'pallet') { addPallet(f, 0, 0, 0, Math.min(f.w, 1.2), Math.min(f.l, 1.2), 1.0, PALLET_COLORS[hash(o.id) % PALLET_COLORS.length]); break }
+        B(f, 0, 0, 0, f.w, h, f.l, t === 'container' ? '#b45309' : t === 'cage-pallet' ? '#9ca3af' : '#c8a97e')
+        obstacle(f); break
+      }
+      case 'wall': B(f, 0, 0, 0, f.w, +o.properties?.height || 6, f.l, '#cbd5e1'); obstacle(f); break
+      case 'column': B(f, 0, 0, 0, f.w, ROOF_H, f.l, '#a8a29e'); B(f, 0, 0, 0, f.w + 0.04, 1.2, f.l + 0.04, '#facc15'); obstacle(f); break
+      case 'door': case 'gate': {
+        const along = f.w >= f.l, span = Math.max(f.w, f.l), h = t === 'gate' ? 4.5 : 2.4, post = 0.12
+        const c = t === 'gate' ? '#475569' : '#16a34a'
+        for (const s of [-1, 1]) along ? B(f, s * (span / 2 - post / 2), 0, 0, post, h, Math.max(f.l, 0.15), c) : B(f, 0, 0, s * (span / 2 - post / 2), Math.max(f.w, 0.15), h, post, c)
+        along ? B(f, 0, h - 0.15, 0, span, 0.15, Math.max(f.l, 0.15), c) : B(f, 0, h - 0.15, 0, Math.max(f.w, 0.15), 0.15, span, c)
+        break
+      }
+      case 'dock': B(f, 0, 0, 0, f.w, 0.12, f.l, '#57534e'); B(f, 0, 0.12, 0, f.w * 0.9, 0.02, f.l * 0.9, '#facc15'); label(o.name || 'Doca', '#2563EB', f.cx, 1, f.cz); break
+      case 'stairs': { const n = 10; for (let i = 0; i < n; i++) B(f, 0, 0, -f.l / 2 + (i + 0.5) * f.l / n, f.w, (i + 1) * 0.18, f.l / n, '#94a3b8'); obstacle(f); break }
+      case 'conveyor': {
+        const along = f.w >= f.l, len = Math.max(f.w, f.l), wid = Math.min(f.w, f.l)
+        along ? B(f, 0, 0.7, 0, f.w, 0.1, f.l, '#334155') : B(f, 0, 0.7, 0, f.w, 0.1, f.l, '#334155')
+        for (let k = 0; k <= Math.floor(len / 1.5); k++) { const p = -len / 2 + k * len / Math.max(1, Math.floor(len / 1.5)); along ? B(f, p, 0, 0, 0.06, 0.7, wid * 0.9, '#64748b') : B(f, 0, 0, p, wid * 0.9, 0.7, 0.06, '#64748b') }
+        const n = Math.max(1, Math.floor(len / 1.4))
+        for (let k = 0; k < n; k++) {
+          const m = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.35, 0.45), M(PALLET_COLORS[k % PALLET_COLORS.length])); m.castShadow = true; root.add(m)
+          conveyorItems.push({ m, f, along, len, u: k / n })
+        }
+        obstacle(f); break
+      }
+      case 'sorting-bench': case 'packing-table': {
+        B(f, 0, 0.85, 0, f.w, 0.06, f.l, t === 'packing-table' ? '#d6d3d1' : '#94a3b8')
+        for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) B(f, sx * (f.w / 2 - 0.05), 0, sz * (f.l / 2 - 0.05), 0.05, 0.85, 0.05, '#475569')
+        obstacle(f); break
+      }
+      case 'scale': B(f, 0, 0, 0, f.w, 0.1, f.l, '#475569'); break
+      case 'label-printer': case 'rf-scanner': B(f, 0, 0, 0, 0.05, 1.0, 0.05, '#475569'); B(f, 0, 1.0, 0, f.w, Math.min(0.3, f.l), f.l, '#1f2937'); break
+      case 'forklift': case 'reach-truck': case 'order-picker': vehicle(f, t === 'forklift' ? '#f59e0b' : t === 'reach-truck' ? '#2563EB' : '#16a34a', t); break
+      case 'pallet-jack': case 'platform-cart': case 'tug':
+        B(f, 0, 0, 0, f.w, t === 'tug' ? 1.1 : 0.2, f.l, t === 'tug' ? '#ea580c' : '#64748b')
+        if (t !== 'tug') B(f, -f.w / 2 + 0.05, 0, 0, 0.06, 1.0, f.l * 0.8, '#1f2937')
+        obstacle(f); break
+      case 'corridor': case 'traffic-lane': case 'flow-route': case 'intersection': {
+        floorPlane(f, t === 'flow-route' ? '#2563EB' : '#eab308', t === 'intersection' ? 0.3 : 0.12, 0.014); break
+      }
+      case 'pedestrian-lane': floorPlane(f, '#16a34a', 0.4, 0.016); break
+      case 'safety-zone': floorPlane(f, '#dc2626', 0.25, 0.016); break
+      case 'directional-arrow': {
+        const shape = new THREE.Shape(); const a = f.w / 2, b = f.l / 2
+        shape.moveTo(-a, -b * 0.4); shape.lineTo(a * 0.2, -b * 0.4); shape.lineTo(a * 0.2, -b); shape.lineTo(a, 0); shape.lineTo(a * 0.2, b); shape.lineTo(a * 0.2, b * 0.4); shape.lineTo(-a, b * 0.4)
+        const m = new THREE.Mesh(new THREE.ShapeGeometry(shape), new THREE.MeshBasicMaterial({ color: '#facc15' }))
+        m.rotation.order = 'YXZ'; m.rotation.y = f.th; m.rotation.x = -Math.PI / 2; m.position.set(f.cx, 0.02, f.cz); root.add(m); break
+      }
+      default: B(f, 0, 0, 0, f.w, 1, f.l, '#94a3b8'); obstacle(f)
+    }
+  }
+  flushBoxes()
+  buildPallets()
+  buildGrid()
+  buildAgents(project, objects)
+
+  const sz = Math.max(W, D)
+  sun.position.set(W / 2 + sz * 0.4, sz, D / 2 + sz * 0.3); sun.target.position.set(W / 2, 0, D / 2)
+  Object.assign(sun.shadow.camera, { left: -sz, right: sz, top: sz, bottom: -sz, near: 1, far: sz * 3 }); sun.shadow.camera.updateProjectionMatrix()
+  scene.fog = new THREE.Fog('#a9bccf', sz * 2.5, sz * 6)
+
+  document.getElementById('pname').textContent = project.name || 'Projeto'
+  document.getElementById('i-env').textContent = `${+W.toFixed(1)} × ${+D.toFixed(1)} m`
+  document.getElementById('i-obj').textContent = stats.objects
+  document.getElementById('i-pos').textContent = stats.positions
+  document.getElementById('i-routes').textContent = stats.routes
+  document.getElementById('i-warn').textContent = [
+    stats.unlinked ? `${stats.unlinked} conexão(ões) do Fluxo sem etapas vinculadas a objetos do Layout não aparecem animadas.` : '',
+    !objects.length ? 'O layout está vazio: adicione objetos na aba Layout.' : '',
+  ].filter(Boolean).join(' ')
+  if (!walkerPlaced) placeWalker()
+  refreshSelection()
+}
+
+// ---------------------------------------------------------------- grade de navegação + A*
+const CELL = 0.5
+let grid = null, GW = 0, GD = 0
+function insideOBB(x, z, b, r = 0) {
+  const dx = x - b.cx, dz = z - b.cz
+  const lx = dx * b.c + dz * b.s, lz = -dx * b.s + dz * b.c   // referencial local do objeto
+  return Math.abs(lx) <= b.hw + r && Math.abs(lz) <= b.hl + r
+}
+function buildGrid() {
+  GW = Math.ceil(W / CELL); GD = Math.ceil(D / CELL); grid = new Uint8Array(GW * GD)
+  for (let j = 0; j < GD; j++) for (let i = 0; i < GW; i++) {
+    const x = (i + 0.5) * CELL, z = (j + 0.5) * CELL
+    grid[j * GW + i] = obstacles.some((b) => insideOBB(x, z, b, 0.45)) ? 1 : 0
+  }
+}
+function nearestFree(x, z) {
+  const ci = clamp(Math.floor(x / CELL), 0, GW - 1), cj = clamp(Math.floor(z / CELL), 0, GD - 1)
+  for (let r = 0; r < Math.max(GW, GD); r++) {
+    let best = null, bd = Infinity
+    for (let j = cj - r; j <= cj + r; j++) for (let i = ci - r; i <= ci + r; i++) {
+      if (i < 0 || j < 0 || i >= GW || j >= GD || grid[j * GW + i]) continue
+      const d = Math.hypot(i - ci, j - cj); if (d < bd) { bd = d; best = [i, j] }
+    }
+    if (best) return best
+  }
+  return null
+}
+function astar(a, b) {
+  const s = nearestFree(a.x, a.z), t = nearestFree(b.x, b.z)
+  if (!s || !t) return null
+  const N = GW * GD, g = new Float32Array(N).fill(Infinity), prev = new Int32Array(N).fill(-1), closed = new Uint8Array(N)
+  const heap = [] // [f, idx]
+  const push = (f, i) => { heap.push([f, i]); let k = heap.length - 1; while (k) { const p = (k - 1) >> 1; if (heap[p][0] <= heap[k][0]) break; [heap[p], heap[k]] = [heap[k], heap[p]]; k = p } }
+  const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let k = 0; for (;;) { const l = 2 * k + 1, r = l + 1; let m = k; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === k) break; [heap[m], heap[k]] = [heap[k], heap[m]]; k = m } } return top }
+  const si = s[1] * GW + s[0], ti = t[1] * GW + t[0]
+  g[si] = 0; push(0, si)
+  while (heap.length) {
+    const [, u] = pop(); if (closed[u]) continue; closed[u] = 1
+    if (u === ti) break
+    const ui = u % GW, uj = (u / GW) | 0
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+      if (!di && !dj) continue
+      const vi = ui + di, vj = uj + dj; if (vi < 0 || vj < 0 || vi >= GW || vj >= GD) continue
+      const v = vj * GW + vi; if (grid[v] || closed[v]) continue
+      if (di && dj && (grid[uj * GW + vi] || grid[vj * GW + ui])) continue
+      const ng = g[u] + (di && dj ? 1.4142 : 1)
+      if (ng < g[v]) { g[v] = ng; prev[v] = u; push(ng + Math.hypot(vi - t[0], vj - t[1]), v) }
+    }
+  }
+  if (prev[ti] < 0 && si !== ti) return null
+  const cells = []; for (let u = ti; u >= 0; u = prev[u]) cells.unshift(u)
+  const pts = cells.map((u) => ({ x: ((u % GW) + 0.5) * CELL, z: (((u / GW) | 0) + 0.5) * CELL }))
+  // simplificação por linha de visada na grade
+  const out = [pts[0]]
+  let k = 0
+  while (k < pts.length - 1) {
+    let far = k + 1
+    for (let m = pts.length - 1; m > k + 1; m--) if (clearLine(pts[k], pts[m])) { far = m; break }
+    out.push(pts[far]); k = far
+  }
+  return out
+}
+function clearLine(a, b) {
+  const n = Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / (CELL * 0.5))
+  for (let k = 0; k <= n; k++) {
+    const x = a.x + (b.x - a.x) * k / n, z = a.z + (b.z - a.z) * k / n
+    const i = Math.floor(x / CELL), j = Math.floor(z / CELL)
+    if (i < 0 || j < 0 || i >= GW || j >= GD || grid[j * GW + i]) return false
+  }
+  return true
+}
+
+// ---------------------------------------------------------------- modelos móveis
+function box(w, h, l, m, x, y, z) { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, l), m); b.position.set(x, y, z); b.castShadow = true; return b }
+function makeForklift(color, kind = 'forklift') {
+  const g = new THREE.Group(), body = M(color), dark = M('#1f2937'), steel = M('#9ca3af', { metalness: 0.6, roughness: 0.4 })
+  g.add(box(1.1, 0.9, 1.7, body, 0, 0.75, -0.15), box(1.1, 0.75, 0.45, dark, 0, 0.75, -1.15))
+  for (const [x, z] of [[-0.5, -0.65], [0.5, -0.65], [-0.5, 0.45], [0.5, 0.45]]) g.add(box(0.06, 1.3, 0.06, dark, x, 1.85, z))
+  g.add(box(1.12, 0.06, 1.2, dark, 0, 2.5, -0.1))
+  const wg = new THREE.CylinderGeometry(0.3, 0.3, 0.22, 14).rotateZ(Math.PI / 2)
+  for (const [x, z] of [[-0.6, 0.45], [0.6, 0.45], [-0.5, -0.9], [0.5, -0.9]]) { const w = new THREE.Mesh(wg, dark); w.position.set(x, 0.3, z); g.add(w) }
+  for (const x of [-0.38, 0.38]) g.add(box(0.08, kind === 'reach-truck' ? 4 : 2.6, 0.12, steel, x, kind === 'reach-truck' ? 2 : 1.4, 0.85))
+  const inner = new THREE.Group(); g.add(inner)   // estágio interno do mastro: sobe junto com o garfo acima de 1,9 m
+  for (const x of [-0.3, 0.3]) inner.add(box(0.07, 2.5, 0.1, steel, x, 1.35, 0.92))
+  inner.add(box(0.67, 0.07, 0.1, steel, 0, 2.6, 0.92))
+  const forks = new THREE.Group(); g.add(forks)
+  forks.add(box(0.9, 0.5, 0.06, dark, 0, 0.3, 0.98))
+  for (const x of [-0.3, 0.3]) forks.add(box(0.12, 0.05, 1.15, steel, x, 0.03, 1.55))
+  if (kind === 'order-picker') g.add(box(0.9, 0.08, 0.8, steel, 0, 1.6, 0.4))
+  return { g, forks, inner }
+}
+const personGeo = new THREE.CapsuleGeometry(0.22, 0.85, 4, 10).translate(0, 0.65, 0), headGeo = new THREE.SphereGeometry(0.14, 12, 10).translate(0, 1.42, 0)
+function makePerson(color) { const g = new THREE.Group(); const b = new THREE.Mesh(personGeo, M(color)), h = new THREE.Mesh(headGeo, M('#e0b48c')); b.castShadow = true; g.add(b, h); return g }
+function makeLoad() { const g = new THREE.Group(); g.add(box(1.0, 0.14, 1.2, M('#8B5E34'), 0, 0.07, 0), box(0.95, 1.0, 1.1, M(PALLET_COLORS[0]), 0, 0.64, 0)); return g }
+
+// Rotas do Fluxo: cada conexão entre etapas vinculadas a objetos vira um agente indo e voltando
+function buildAgents(project, objects) {
+  const byId = new Map(objects.map((o) => [o.id, o]))
+  const nodes = new Map((project.flowNodes || []).map((n) => [n.id, n]))
+  for (const c of project.flowConnections || []) {
+    const a = byId.get(nodes.get(c.fromNodeId)?.linkedObjectId), b = byId.get(nodes.get(c.toNodeId)?.linkedObjectId)
+    if (!a || !b) { stats.unlinked++; continue }
+    const fa = objFrame(a), fb = objFrame(b)
+    const path = astar({ x: fa.cx, z: fa.cz }, { x: fb.cx, z: fb.cz })
+    if (!path || path.length < 2) continue
+    const machine = c.flowType === 'pallet' || c.flowType === 'forklift'
+    const color = { material: '#334155', pallet: '#8B5E34', people: '#0D9488', forklift: '#2563EB', picking: '#7C3AED' }[c.flowType] || '#334155'
+    let model
+    if (machine) model = makeForklift('#2563EB')
+    else model = { g: makePerson(color) }
+    const load = makeLoad(); if (machine) { model.forks.add(load); load.position.set(0, 0.06, 1.6) } else { load.scale.set(0.45, 0.4, 0.4); load.position.set(0, 0.85, 0.35); model.g.add(load) }
+    root.add(model.g)
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(path.map((p) => new THREE.Vector3(p.x, 0.03, p.z))), new THREE.LineDashedMaterial({ color, dashSize: 0.6, gapSize: 0.4 }))
+    line.computeLineDistances(); root.add(line)
+    agents.push({ ...model, path, seg: 1, dir: 1, x: path[0].x, z: path[0].z, th: 0, v: 0, wait: 1 + agents.length, load, machine,
+      speed: machine ? 2.2 : 1.3, label: c.label || '' })
+    stats.routes++
+  }
+}
+function stepAgents(dt) {
+  for (const a of agents) {
+    if (a.wait > 0) { a.wait -= dt; continue }
+    const tgt = a.path[a.seg]
+    const dx = tgt.x - a.x, dz = tgt.z - a.z, d = Math.hypot(dx, dz)
+    if (d < 0.05) {
+      a.seg += a.dir
+      if (a.seg >= a.path.length || a.seg < 0) { a.dir *= -1; a.seg += 2 * a.dir; a.wait = a.machine ? 5 : 3; a.load.visible = a.dir > 0 }
+      continue
+    }
+    const want = Math.atan2(dx, dz), diff = angDiff(want, a.th)
+    a.th = wrap(a.th + clamp(diff, -2.5 * dt, 2.5 * dt))
+    let target = Math.abs(diff) > 0.4 ? 0 : a.speed
+    const me = mode === 'walk' ? walker : mode === 'drive' ? user : null
+    if (me) { const rx = me.x - a.x, rz = me.z - a.z, dd = Math.hypot(rx, rz); if (dd < 3 && rx * dx / d + rz * dz / d > 0.5 * dd) target = 0 }
+    a.v += clamp(target - a.v, -3 * dt, 1.5 * dt)
+    const s = Math.min(Math.max(0, a.v) * dt, d); a.x += dx / d * s; a.z += dz / d * s
+  }
+}
+
+// ---------------------------------------------------------------- navegação: órbita, planta, seguir, andar, dirigir
+let mode = 'orbit', followIdx = 0, cabin = false, walkerPlaced = false
+const walker = { x: 1, z: 1, yaw: Math.PI, pitch: 0, g: makePerson('#dc2626') }
+const userModel = makeForklift('#dc2626')
+const user = { x: 2, z: 2, th: Math.PI, v: 0, h: 0.05, ...userModel }
+scene.add(walker.g, user.g)
+function placeWalker() {
+  const c = nearestFree(1.5, D - 1.5) || [1, 1]; walker.x = (c[0] + 0.5) * CELL; walker.z = (c[1] + 0.5) * CELL
+  const u = nearestFree(W / 2, D - 3) || c; user.x = (u[0] + 0.5) * CELL; user.z = (u[1] + 0.5) * CELL
+  const first = pallets.find((p) => p.slot && p.y === 0)
+  if (first) {   // para em frente a um pallet do nível térreo, já alinhada
+    for (const s of [1, -1]) {
+      const th = first.rot + (s > 0 ? Math.PI : 0), x = first.x - Math.sin(th) * 4, z = first.z - Math.cos(th) * 4
+      const cell = grid[Math.floor(z / CELL) * GW + Math.floor(x / CELL)]
+      if (x > 1 && z > 1 && x < W - 1 && z < D - 1 && cell === 0) { user.x = x; user.z = z; user.th = th; break }
+    }
+  }
+  walkerPlaced = true
+}
+function collide(x, z, r) {
+  x = clamp(x, r, W - r); z = clamp(z, r, D - r)
+  for (const b of obstacles) {
+    const dx = x - b.cx, dz = z - b.cz
+    let lx = dx * b.c + dz * b.s, lz = -dx * b.s + dz * b.c
+    const qx = clamp(lx, -b.hw, b.hw), qz = clamp(lz, -b.hl, b.hl)
+    let ex = lx - qx, ez = lz - qz, d = Math.hypot(ex, ez)
+    if (d >= r) continue
+    if (d < 1e-6) { // centro dentro da caixa: empurra pela face mais próxima
+      const pen = [b.hw - lx, b.hw + lx, b.hl - lz, b.hl + lz], k = pen.indexOf(Math.min(...pen))
+      if (k === 0) lx = b.hw + r; else if (k === 1) lx = -b.hw - r; else if (k === 2) lz = b.hl + r; else lz = -b.hl - r
+    } else { lx = qx + ex / d * r; lz = qz + ez / d * r }
+    x = b.cx + lx * b.c - lz * b.s; z = b.cz + lx * b.s + lz * b.c
+  }
+  return [x, z]
+}
+const keys = new Set(), joy = { x: 0, y: 0 }, forkBtn = { up: false, down: false, auto: false }
+const isTouch = matchMedia('(pointer: coarse)').matches
+const key = (...c) => c.some((k) => keys.has(k))
+const HELP = {
+  orbit: 'Arraste para girar · roda/pinça para zoom · botão direito para mover',
+  top: 'Vista de planta — igual à prancheta 2D · arraste para mover, roda para zoom',
+  follow: 'Seguindo um agente do Fluxo · <kbd>N</kbd> próximo',
+  walk: isTouch ? 'Joystick para andar · arraste na tela para olhar' : 'Clique para capturar o mouse · <kbd>W A S D</kbd> andar · <kbd>Shift</kbd> correr · <kbd>Esc</kbd> soltar',
+  edit: 'Clique para selecionar · arraste para mover',
+  drive: isTouch ? 'Joystick: acelerar/virar · botões para o garfo' : '<kbd>W/S</kbd> acelerar/ré · <kbd>A/D</kbd> virar · <kbd>R/F</kbd> garfo · <kbd>E</kbd> ajustar ao pallet · <kbd>V</kbd> cabine/externa · <kbd>Espaço</kbd> freio',
+}
+function resetCamera(m) {
+  const sz = Math.max(W, D)
+  if (m === 'top') camera.position.set(W / 2, sz * 1.15, D / 2 + 0.01)
+  else camera.position.set(W / 2 - sz * 0.45, sz * 0.75, D + sz * 0.55)
+  controls.target.set(W / 2, 0, D / 2)
+}
+function setMode(m) {
+  if (m === 'follow' && !agents.length) { flash('Nenhuma rota do Fluxo vinculada ao Layout para seguir'); return }
+  mode = m
+  document.querySelectorAll('#modes button[data-mode]').forEach((b) => b.classList.toggle('on', b.dataset.mode === m))
+  document.getElementById('help').innerHTML = HELP[m]
+  const first = m === 'walk' || m === 'drive'
+  controls.enabled = !first; controls.enableRotate = m !== 'top'
+  document.getElementById('joy').style.display = first && isTouch ? 'block' : 'none'
+  document.getElementById('forkBtns').style.display = m === 'drive' && isTouch ? 'flex' : 'none'
+  document.getElementById('crosshair').style.display = m === 'walk' ? 'block' : 'none'
+  walker.g.visible = m !== 'walk'
+  user.g.visible = m === 'drive'
+  if (m !== 'walk' && document.pointerLockElement) document.exitPointerLock()
+  if (m === 'orbit' || m === 'top') resetCamera(m)
+  if (m === 'edit' && (prevMode === 'walk' || prevMode === 'drive' || prevMode === 'follow')) resetCamera('orbit')
+  document.getElementById('editbar').style.display = m === 'edit' ? 'flex' : 'none'
+  document.getElementById('help').style.display = m === 'edit' ? 'none' : ''
+  if (m !== 'edit') { selBox.visible = ghost.visible = false } else refreshSelection()
+  prevMode = m
+}
+let prevMode = 'orbit'
+document.querySelectorAll('#modes button[data-mode]').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)))
+document.getElementById('infoBtn').onclick = () => document.getElementById('info').classList.toggle('open')
+addEventListener('keydown', (e) => {
+  keys.add(e.code)
+  if (e.code === 'KeyN' && mode === 'follow') followIdx++
+  if (e.code === 'KeyV' && mode === 'drive') cabin = !cabin
+  if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code) && (mode === 'walk' || mode === 'drive')) e.preventDefault()
+})
+addEventListener('keyup', (e) => keys.delete(e.code))
+addEventListener('blur', () => keys.clear())
+renderer.domElement.addEventListener('click', () => { if (mode === 'walk' && !isTouch) renderer.domElement.requestPointerLock?.() })
+addEventListener('mousemove', (e) => {
+  if (mode !== 'walk' || document.pointerLockElement !== renderer.domElement) return
+  walker.yaw -= e.movementX * 0.0025; walker.pitch = clamp(walker.pitch - e.movementY * 0.0025, -1.2, 1.2)
+})
+{
+  let last = null
+  renderer.domElement.addEventListener('pointerdown', (e) => { if (mode === 'walk') last = { x: e.clientX, y: e.clientY } })
+  addEventListener('pointerup', () => (last = null))
+  addEventListener('pointermove', (e) => {
+    if (!last || mode !== 'walk' || document.pointerLockElement) return
+    walker.yaw -= (e.clientX - last.x) * 0.005; walker.pitch = clamp(walker.pitch - (e.clientY - last.y) * 0.005, -1.2, 1.2); last = { x: e.clientX, y: e.clientY }
+  })
+  const el = document.getElementById('joy'), knob = document.getElementById('knob'); let id = null
+  const move = (e) => { const r = el.getBoundingClientRect(), dx = e.clientX - (r.left + 60), dy = e.clientY - (r.top + 60), d = Math.min(1, Math.hypot(dx, dy) / 50), a = Math.atan2(dy, dx); joy.x = Math.cos(a) * d; joy.y = Math.sin(a) * d; knob.style.transform = `translate(${joy.x * 35}px, ${joy.y * 35}px)` }
+  el.addEventListener('pointerdown', (e) => { id = e.pointerId; el.setPointerCapture(id); move(e); e.stopPropagation() })
+  el.addEventListener('pointermove', (e) => { if (e.pointerId === id) move(e) })
+  const end = () => { id = null; joy.x = joy.y = 0; knob.style.transform = '' }
+  el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end)
+  for (const [btn, k] of [['forkUp', 'up'], ['forkDown', 'down'], ['forkAuto', 'auto']]) {
+    const b = document.getElementById(btn); b.addEventListener('pointerdown', () => (forkBtn[k] = true))
+    for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => (forkBtn[k] = false))
+  }
+}
+function updateWalker(dt) {
+  const fwd = (key('KeyW', 'ArrowUp') ? 1 : 0) - (key('KeyS', 'ArrowDown') ? 1 : 0) - joy.y
+  const side = (key('KeyD', 'ArrowRight') ? 1 : 0) - (key('KeyA', 'ArrowLeft') ? 1 : 0) + joy.x
+  const sp = key('ShiftLeft', 'ShiftRight') ? 3.2 : 1.5, fx = Math.sin(walker.yaw), fz = Math.cos(walker.yaw)
+  ;[walker.x, walker.z] = collide(walker.x + (fx * fwd - fz * side) * sp * dt, walker.z + (fz * fwd + fx * side) * sp * dt, 0.3)
+  walker.g.position.set(walker.x, 0, walker.z); walker.g.rotation.y = walker.yaw
+}
+// Geometria da empilhadeira (frente = +z local): o centro do pallet no garfo fica FORK_MID à
+// frente do centro da máquina; o corpo colide como dois círculos, e o garfo pode entrar no rack.
+const FORK_MID = 1.55, FORK_TOP = 0.055, H_MAX = 6.2
+const BODY = [[-0.85, 0.66], [0.15, 0.62]]   // [deslocamento à frente, raio]
+const markerMat = new THREE.MeshBasicMaterial({ color: '#22c55e', wireframe: true, transparent: true, opacity: 0.9 })
+const marker = new THREE.Mesh(unitBox, markerMat); marker.visible = false; scene.add(marker)
+let target = null, hint = '', liftAuto = null
+function forkMid() { return { x: user.x + Math.sin(user.th) * FORK_MID, z: user.z + Math.cos(user.th) * FORK_MID } }
+function aligned(a, b) { return Math.abs(Math.abs(angDiff(a, b)) - Math.PI / 2) > Math.PI / 2 - 0.22 }   // paralelo em qualquer sentido
+function findTarget() {
+  if (carrying) return null
+  const fx = Math.sin(user.th), fz = Math.cos(user.th), m = forkMid()
+  let best = null, bd = Infinity
+  for (const p of pallets) {
+    if (p === carrying) continue
+    const rx = p.x - user.x, rz = p.z - user.z, along = rx * fx + rz * fz, side = Math.abs(rx * fz - rz * fx)
+    if (along < 0.8 || along > 6 || side > 1.2 || p.y > H_MAX) continue
+    const d = Math.hypot(p.x - m.x, p.z - m.z) + side * 2 + Math.abs(p.y - user.h) * 0.3
+    if (d < bd) { bd = d; best = p }
+  }
+  return best
+}
+function pickUp(p) {
+  carrying = p; if (p.slot) { p.slot.pallet = null; p.slot = null }
+  hideInstance(p)
+  p.mesh = palletMesh(p); user.forks.add(p.mesh)
+  // mantém o pallet onde estava em relação ao garfo (sem "pulo"): só a altura encaixa no garfo
+  const rx = p.x - user.x, rz = p.z - user.z, fx = Math.sin(user.th), fz = Math.cos(user.th)
+  p.mesh.position.set(clamp(rx * fz - rz * fx, -0.3, 0.3), -0.04, clamp(rx * fx + rz * fz, FORK_MID - 0.35, FORK_MID + 0.35))
+  p.mesh.rotation.y = Math.abs(angDiff(p.rot, user.th)) > Math.PI / 2 ? Math.PI : 0
+  flash('Pallet no garfo — levante um pouco antes de sair (R)')
+}
+function setDown(slot) {
+  const p = carrying, wp = new THREE.Vector3(); p.mesh.getWorldPosition(wp)
+  p.mesh.removeFromParent(); p.mesh = null; carrying = null
+  if (slot) { p.x = slot.x; p.z = slot.z; p.y = slot.y; p.rot = slot.rot; slot.pallet = p; p.slot = slot }
+  else { p.x = wp.x; p.z = wp.z; p.y = 0; p.rot = user.th }
+  showInstance(p)
+  flash(slot && slot.y > 0.1 ? 'Pallet armazenado no rack ✔' : 'Pallet no piso ✔')
+}
+function supportUnder() {
+  // onde o pallet carregado apoiaria ao baixar: slot alinhado, topo de outro pallet ou piso
+  const wp = new THREE.Vector3(); carrying.mesh.getWorldPosition(wp)
+  let best = { y: 0, slot: null, blocked: false }
+  for (const sl of slots) {
+    if (Math.hypot(sl.x - wp.x, sl.z - wp.z) > 0.7 || sl.y > wp.y + 0.05) continue
+    const y = sl.pallet ? sl.y + 0.14 + sl.pallet.lh + 0.02 : sl.y
+    if (y <= wp.y + 0.05 && y >= best.y) best = { y, slot: sl.pallet ? null : sl, blocked: !!sl.pallet, snap: Math.hypot(sl.x - wp.x, sl.z - wp.z) < 0.45 && aligned(sl.rot, user.th) }
+  }
+  for (const p of pallets) if (p !== carrying && !p.slot && Math.hypot(p.x - wp.x, p.z - wp.z) < 0.9) {
+    const y = p.y + 0.14 + p.lh + 0.02; if (y <= wp.y + 0.05 && y > best.y) best = { y, slot: null, blocked: true }
+  }
+  return best
+}
+function moveBody(nx, nz) {
+  const fx = Math.sin(user.th), fz = Math.cos(user.th)
+  let x = nx, z = nz
+  for (let it = 0; it < 3; it++) for (const [off, r] of BODY) {
+    const cx = x + fx * off, cz = z + fz * off, [rx, rz] = collide(cx, cz, r)
+    x += rx - cx; z += rz - cz
+  }
+  return [x, z]
+}
+function updateUser(dt) {
+  const thr = (key('KeyW', 'ArrowUp') ? 1 : 0) - (key('KeyS', 'ArrowDown') ? 1 : 0) - joy.y
+  const steer = (key('KeyA', 'ArrowLeft') ? 1 : 0) - (key('KeyD', 'ArrowRight') ? 1 : 0) - joy.x
+  const vmax = (carrying ? 2.6 : 3.5) * (user.h > 1 ? 0.45 : 1)   // carga alta: devagar
+  user.v += clamp((thr > 0 ? vmax : 1.5) * thr - user.v, -(key('Space') ? 6 : 2.5) * dt, 1.5 * dt)
+  user.th = wrap(user.th + user.v * 0.55 * steer * dt)
+  const [x, z] = moveBody(user.x + Math.sin(user.th) * user.v * dt, user.z + Math.cos(user.th) * user.v * dt)
+  if (Math.hypot(x - user.x, z - user.z) < Math.abs(user.v * dt) * 0.5) user.v *= 0.3
+  user.x = x; user.z = z
+
+  // garfo: manual (R/F) ou automático até a altura de encaixe (E)
+  let lift = (key('KeyR') || forkBtn.up ? 1 : 0) - (key('KeyF') || forkBtn.down ? 1 : 0)
+  if (lift) liftAuto = null
+  else if (liftAuto != null) { lift = Math.sign(liftAuto - user.h); if (Math.abs(liftAuto - user.h) < 0.01) { user.h = liftAuto; liftAuto = null; lift = 0 } }
+  const rate = (carrying ? 0.35 : 0.45) * dt
+  let nh = clamp(user.h + lift * rate, 0.05, H_MAX)
+  if (carrying && lift < 0) {
+    const sup = supportUnder(), bottom = nh - 0.04
+    if (bottom <= sup.y + 0.012) {   // o garfo para a 5 cm do piso: tolerância de apoio
+      if (sup.blocked && !sup.slot) { nh = sup.y + 0.04; hint = 'Posição ocupada' }
+      else if (sup.y > 0.1 && !sup.snap) { nh = sup.y + 0.04; hint = 'Desalinhado com a posição do rack — ajuste a empilhadeira' }
+      else { setDown(sup.snap ? sup.slot : null); nh = Math.max(0.05, nh - 0.03) }
+    }
+  }
+  user.h = nh
+
+  // encaixe: garfo dentro das aberturas do pallet, alinhado, subindo
+  target = findTarget()
+  hint = carrying ? (hint && lift < 0 ? hint : '') : ''
+  if (target) {
+    const m = forkMid(), dist = Math.hypot(target.x - m.x, target.z - m.z), want = target.y + 0.06
+    const ok = aligned(target.rot, user.th), inside = dist < 0.4, heightOk = user.h > target.y && user.h < target.y + 0.12
+    if (inside && ok && heightOk && lift > 0) pickUp(target)
+    else if (!ok) hint = 'Alinhe a empilhadeira de frente para o pallet'
+    else if (!heightOk) hint = `Ajuste o garfo para ${want.toFixed(2)} m — tecla E ajusta sozinho`
+    else if (!inside) hint = `Avance ${Math.max(0, dist).toFixed(1)} m com o garfo nas aberturas`
+    else hint = 'Encaixado — levante o garfo (R)'
+    marker.visible = !carrying
+    marker.position.set(target.x, target.y + 0.07 + target.lh / 2, target.z); marker.rotation.y = target.rot
+    marker.scale.set(target.w + 0.08, target.lh + 0.2, target.d + 0.08)
+    markerMat.color.set(inside && ok && heightOk ? '#22c55e' : '#f59e0b')
+    if (key('KeyE') || forkBtn.auto) liftAuto = want
+  } else marker.visible = false
+  if (carrying && key('KeyE')) liftAuto = Math.max(0.3, user.h)
+
+  user.g.position.set(user.x, 0, user.z); user.g.rotation.y = user.th; user.forks.position.y = user.h
+  if (user.inner) user.inner.position.y = Math.max(0, user.h - 1.9)
+}
+function updateCamera() {
+  if (mode === 'follow' && agents.length) {
+    const a = agents[followIdx % agents.length], fx = Math.sin(a.th), fz = Math.cos(a.th)
+    camera.position.lerp(new THREE.Vector3(a.x - fx * 7, 4.5, a.z - fz * 7), 0.08); controls.target.lerp(new THREE.Vector3(a.x + fx * 2, 1, a.z + fz * 2), 0.15)
+  }
+  if (mode === 'walk') { camera.position.set(walker.x, 1.7, walker.z); camera.rotation.set(walker.pitch, walker.yaw + Math.PI, 0, 'YXZ') }
+  if (mode === 'drive') {
+    const fx = Math.sin(user.th), fz = Math.cos(user.th)
+    if (cabin) { camera.position.set(user.x - fx * 0.45, 2.05, user.z - fz * 0.45); camera.lookAt(user.x + fx * 5, 1.2 + user.h * 0.3, user.z + fz * 5) }
+    else { camera.position.lerp(new THREE.Vector3(user.x - fx * 6.5, 4, user.z - fz * 6.5), 0.12); camera.lookAt(user.x + fx * 3, 1, user.z + fz * 3) }
+  }
+}
+const alertEl = document.getElementById('alert'); let flashT = 0
+function flash(t) { alertEl.textContent = t; alertEl.className = 'warn'; alertEl.style.display = 'block'; flashT = 2.5 }
+function updateAlert(dt) {
+  if (flashT > 0) { flashT -= dt; return }
+  let msg = '', cls = ''
+  if (mode === 'walk' || mode === 'drive') {
+    const me = mode === 'walk' ? walker : user
+    const near = agents.filter((a) => a.machine).reduce((m, a) => Math.min(m, Math.hypot(a.x - me.x, a.z - me.z)), Infinity)
+    if (near < 4) msg = `⚠ Empilhadeira a ${near.toFixed(1)} m`
+    else if (mode === 'drive') { msg = `${(Math.abs(user.v) * 3.6).toFixed(1)} km/h · garfo ${user.h.toFixed(2)} m${carrying ? ' · carregado' : ''}${hint ? ' — ' + hint : ''}`; cls = 'warn' }
+  }
+  alertEl.style.display = msg ? 'block' : 'none'; alertEl.textContent = msg; alertEl.className = cls
+}
+const mm = document.getElementById('minimap'), mctx = mm.getContext('2d')
+function drawMinimap() {
+  const s = Math.min(mm.width / (W * 1.08), mm.height / (D * 1.08)), ox = (mm.width - W * s) / 2, oy = (mm.height - D * s) / 2
+  mctx.clearRect(0, 0, mm.width, mm.height); mctx.fillStyle = '#d6d3cd'; mctx.fillRect(ox, oy, W * s, D * s)
+  mctx.fillStyle = '#1e3a8a'
+  for (const b of obstacles) {
+    mctx.save(); mctx.translate(ox + b.cx * s, oy + b.cz * s); mctx.rotate(Math.atan2(b.s, b.c)); mctx.fillRect(-b.hw * s, -b.hl * s, 2 * b.hw * s, 2 * b.hl * s); mctx.restore()
+  }
+  const dot = (x, z, th, color, r) => { mctx.save(); mctx.translate(ox + x * s, oy + z * s); mctx.rotate(-th); mctx.fillStyle = color; mctx.beginPath(); mctx.moveTo(0, r * 1.6); mctx.lineTo(r, -r); mctx.lineTo(-r, -r); mctx.closePath(); mctx.fill(); mctx.restore() }
+  for (const a of agents) dot(a.x, a.z, a.th, a.machine ? '#2563EB' : '#0D9488', 4.5)
+  if (mode === 'drive') dot(user.x, user.z, user.th, '#dc2626', 5)
+  dot(walker.x, walker.z, walker.yaw, '#f97316', 4.5)
+}
+
+// ---------------------------------------------------------------- edição no 3D
+// O visualizador não altera o projeto sozinho: pede ao editor (postMessage) e o editor aplica com
+// as mesmas ações do 2D (histórico, salvamento automático). O projeto volta atualizado e o 3D é
+// reconstruído — uma única fonte de verdade.
+const embedded = parent !== window
+const editLine = (color) => new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0)), new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true }))
+const selBox = editLine('#3b82f6'), ghost = editLine('#22c55e')
+selBox.renderOrder = ghost.renderOrder = 10; selBox.visible = ghost.visible = false
+const ghostFill = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), new THREE.MeshBasicMaterial({ color: '#22c55e', transparent: true, opacity: 0.18, depthWrite: false }))
+ghost.add(ghostFill); scene.add(selBox, ghost)
+let selectedId = null, drag = null
+const TYPE_LABEL = { rack: 'Porta-paletes', 'drive-in': 'Drive-in', 'push-back': 'Push-back', 'flow-rack': 'Flow rack', cantilever: 'Cantilever', shelf: 'Estante',
+  'storage-block': 'Blocado', pallet: 'Pallet', forklift: 'Empilhadeira', 'reach-truck': 'Reach truck', 'order-picker': 'Selecionadora', conveyor: 'Esteira',
+  column: 'Coluna', wall: 'Parede', door: 'Porta', gate: 'Portão', dock: 'Doca', area: 'Área', 'area-picking': 'Área de picking', 'area-shipping': 'Área de expedição',
+  'area-receiving': 'Área de recebimento', 'area-staging': 'Staging', 'area-inspection': 'Conferência', 'pedestrian-lane': 'Faixa de pedestres', 'traffic-lane': 'Faixa de tráfego' }
+function send(op, data = {}) { if (embedded) parent.postMessage({ type: 'argus:edit', op, ...data }, location.origin) }
+function placeBox(b, f, h) { b.position.set(f.cx, 0, f.cz); b.rotation.set(0, f.th, 0); b.scale.set(f.w + 0.1, Math.max(h, 0.05) + 0.05, f.l + 0.1) }
+function refreshSelection() {
+  const info = objInfo.find((i) => i.id === selectedId)
+  if (!info) selectedId = null
+  selBox.visible = mode === 'edit' && !!info
+  if (info) placeBox(selBox, info.f, info.h)
+  document.getElementById('e-name').textContent = info ? (info.o.name || TYPE_LABEL[info.o.objectType] || info.o.objectType) : 'Nenhum objeto selecionado'
+  document.getElementById('e-meta').textContent = info
+    ? `${TYPE_LABEL[info.o.objectType] || info.o.objectType} · ${(info.o.width / 100).toFixed(2)} × ${(info.o.length / 100).toFixed(2)} m · ${Math.round(info.o.rotationDeg || 0)}°`
+    : 'Clique em um objeto para selecionar · arraste para mover'
+  for (const id of ['e-rotl', 'e-rotr', 'e-dup', 'e-del']) document.getElementById(id).disabled = !info
+}
+function select(id) { selectedId = id; refreshSelection(); send('select', { id }) }
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2()
+function rayFrom(e) { const r = renderer.domElement.getBoundingClientRect(); ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); ray.setFromCamera(ndc, camera); return ray.ray }
+function hitObject(r) {
+  // raio contra a caixa orientada de cada objeto (no referencial local); objetos baixos (áreas)
+  // perdem para os que estão em cima deles
+  let best = null, bt = Infinity
+  for (const i of objInfo) {
+    const c = Math.cos(-i.f.th), sn = Math.sin(-i.f.th)
+    const ox = r.origin.x - i.f.cx, oz = r.origin.z - i.f.cz, dx = r.direction.x, dz = r.direction.z
+    const o = [ox * c + oz * sn, r.origin.y, -ox * sn + oz * c], d = [dx * c + dz * sn, r.direction.y, -dx * sn + dz * c]
+    const lo = [-i.f.w / 2, 0, -i.f.l / 2], hi = [i.f.w / 2, Math.max(i.h, 0.05), i.f.l / 2]
+    let t0 = 0, t1 = Infinity
+    for (let k = 0; k < 3; k++) {
+      if (Math.abs(d[k]) < 1e-9) { if (o[k] < lo[k] || o[k] > hi[k]) { t0 = Infinity; break } continue }
+      let a = (lo[k] - o[k]) / d[k], b = (hi[k] - o[k]) / d[k]; if (a > b) [a, b] = [b, a]
+      t0 = Math.max(t0, a); t1 = Math.min(t1, b)
+    }
+    if (t0 > t1 || t0 === Infinity) continue
+    const score = t0 + (i.h <= 0.05 ? 1000 : 0)
+    if (score < bt) { bt = score; best = i }
+  }
+  return best
+}
+function groundPoint(r) { if (r.direction.y >= -1e-6) return null; const t = -r.origin.y / r.direction.y; return { x: r.origin.x + r.direction.x * t, z: r.origin.z + r.direction.z * t } }
+const snap = (v) => Math.round(v * 10) / 10   // 10 cm
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  if (mode !== 'edit' || e.button !== 0) return
+  const r = rayFrom(e), hit = hitObject(r)
+  drag = { sx: e.clientX, sy: e.clientY, info: hit, moved: false }
+  if (hit) {
+    if (hit.id !== selectedId) select(hit.id)
+    const g = groundPoint(r)
+    if (g) { drag.off = { x: hit.f.cx - g.x, z: hit.f.cz - g.z }; controls.enabled = false }
+  }
+}, true)
+addEventListener('pointermove', (e) => {
+  if (mode !== 'edit' || !drag?.info || !drag.off) return
+  if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 4) drag.moved = true
+  if (!drag.moved) return
+  const g = groundPoint(rayFrom(e)); if (!g) return
+  const i = drag.info
+  // mantém o objeto inteiro dentro do ambiente (meia-extensão da caixa girada)
+  const c = Math.abs(Math.cos(i.f.th)), sn = Math.abs(Math.sin(i.f.th))
+  const hx = Math.min(W / 2, (i.f.w * c + i.f.l * sn) / 2), hz = Math.min(D / 2, (i.f.w * sn + i.f.l * c) / 2)
+  drag.cx = clamp(snap(g.x + drag.off.x), hx, W - hx); drag.cz = clamp(snap(g.z + drag.off.z), hz, D - hz)
+  placeBox(ghost, { ...i.f, cx: drag.cx, cz: drag.cz }, i.h); ghost.visible = true
+})
+addEventListener('pointerup', (e) => {
+  if (mode !== 'edit' || !drag) return
+  const d = drag; drag = null; ghost.visible = false; controls.enabled = true
+  if (d.info && d.moved && d.cx != null) {
+    const o = d.info.o
+    send('move', { id: o.id, x: Math.round(d.cx * 100 - o.width / 2), y: Math.round(d.cz * 100 - o.length / 2) })
+    selBox.position.set(d.cx, 0, d.cz)   // resposta imediata; o projeto atualizado chega em seguida
+  } else if (!d.info && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < 5) select(null)
+})
+const editAct = {
+  rotl: () => selectedId && send('rotate', { id: selectedId, deltaDeg: -90 }),
+  rotr: () => selectedId && send('rotate', { id: selectedId, deltaDeg: 90 }),
+  dup: () => selectedId && send('duplicate', { id: selectedId }),
+  del: () => { if (selectedId) { send('delete', { id: selectedId }); selectedId = null; refreshSelection() } },
+}
+document.getElementById('e-rotl').onclick = editAct.rotl
+document.getElementById('e-rotr').onclick = editAct.rotr
+document.getElementById('e-dup').onclick = editAct.dup
+document.getElementById('e-del').onclick = editAct.del
+document.getElementById('e-undo').onclick = () => send('undo')
+document.getElementById('e-redo').onclick = () => send('redo')
+document.getElementById('e-add').onchange = (e) => {
+  const type = e.target.value; e.target.value = ''
+  if (!type) return
+  // insere no ponto do piso no centro da tela (ou no centro do ambiente)
+  ndc.set(0, 0); ray.setFromCamera(ndc, camera)
+  const g = groundPoint(ray.ray) || { x: W / 2, z: D / 2 }
+  send('add', { objectType: type, x: Math.round(clamp(g.x, 0, W) * 100), y: Math.round(clamp(g.z, 0, D) * 100) })
+}
+addEventListener('keydown', (e) => {
+  if (mode !== 'edit' || e.target.tagName === 'SELECT') return
+  const mod = e.ctrlKey || e.metaKey
+  if (mod && e.code === 'KeyZ') { e.preventDefault(); send(e.shiftKey ? 'redo' : 'undo') }
+  else if (mod && e.code === 'KeyY') { e.preventDefault(); send('redo') }
+  else if (mod && e.code === 'KeyD') { e.preventDefault(); editAct.dup() }
+  else if (e.code === 'Delete' || e.code === 'Backspace') { e.preventDefault(); editAct.del() }
+  else if (e.code === 'KeyQ') editAct.rotl()
+  else if (e.code === 'KeyE') editAct.rotr()
+  else if (e.code === 'Escape') select(null)
+})
+addEventListener('message', (e) => {
+  if (e.origin !== location.origin || e.data?.type !== 'argus:selection') return
+  if (e.data.id !== selectedId) { selectedId = e.data.id; refreshSelection() }
+})
+if (embedded) document.getElementById('editBtn').style.display = ''
+
+// ---------------------------------------------------------------- dados: editor → visualizador
+let project = null, firstBuild = true
+function load(p) {
+  if (!p || !Array.isArray(p.objects)) return
+  project = p
+  document.getElementById('empty').style.display = 'none'
+  build(p)
+  if (firstBuild) { resetCamera('orbit'); setMode('orbit'); firstBuild = false }
+}
+addEventListener('message', (e) => {
+  if (e.origin !== location.origin || e.data?.type !== 'argus:project') return
+  load(e.data.project)
+})
+try { const s = localStorage.getItem(STORAGE_KEY); if (s) load(JSON.parse(s)) } catch { /* sem armazenamento: aguarda o editor */ }
+if (!project) document.getElementById('empty').style.display = parent !== window ? 'none' : 'grid'
+parent !== window && parent.postMessage({ type: 'argus:ready' }, location.origin)
+
+let animOn = true
+const t = (id, fn) => document.getElementById(id).addEventListener('click', (e) => fn(e.currentTarget.classList.toggle('on')))
+t('t-anim', (on) => { animOn = on; document.getElementById('t-anim').textContent = on ? '⏸ Animação' : '▶ Animação' })
+t('t-labels', (on) => (document.getElementById('labels').style.display = on ? '' : 'none'))
+t('t-roof', (on) => roof && (roof.visible = on))
+
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); labelRenderer.setSize(innerWidth, innerHeight) })
+const clock = new THREE.Clock()
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.1)
+  if (project) {
+    if (animOn) {
+      stepAgents(dt)
+      for (const c of conveyorItems) {
+        c.u = (c.u + dt * 0.4 / c.len) % 1
+        const p = -c.len / 2 + c.u * c.len, lx = c.along ? p : 0, lz = c.along ? 0 : p
+        c.m.position.set(c.f.cx + lx * Math.cos(c.f.th) + lz * Math.sin(c.f.th), 0.97, c.f.cz - lx * Math.sin(c.f.th) + lz * Math.cos(c.f.th)); c.m.rotation.y = c.f.th
+      }
+    }
+    for (const a of agents) { a.g.position.set(a.x, 0, a.z); a.g.rotation.y = a.th }
+    if (mode === 'walk') updateWalker(dt)
+    if (mode === 'drive') updateUser(dt)
+    updateCamera()
+    if (controls.enabled) controls.update()
+    updateAlert(dt); drawMinimap()
+  }
+  renderer.render(scene, camera); labelRenderer.render(scene, camera)
+})
+window.__viewer = { screenOf: (id) => { const i = objInfo.find((q) => q.id === id); if (!i) return null; const v = new THREE.Vector3(i.f.cx, i.h / 2, i.f.cz).project(camera); return { x: (v.x + 1) / 2 * innerWidth, y: (1 - v.y) / 2 * innerHeight } }, selected: () => selectedId, load, setMode, stats: () => stats, agents: () => agents, user, keys, pallets: () => pallets, slots: () => slots, carrying: () => carrying, hint: () => hint }
+</script>
+</body>
+</html>
