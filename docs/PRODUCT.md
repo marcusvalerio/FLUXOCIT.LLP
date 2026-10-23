@@ -107,9 +107,12 @@ um CAD genérico nem um modelador 3D.
   distância mínima).
 - Indicadores e análises quantitativas do layout (ocupação, densidade,
   capacidade).
-- Visualização 3D do layout: existe como **aba 3D somente leitura** (visualizador em
-  `public/simulations/projeto-3d.html`, carregado num iframe, fora do bundle do app). O
-  planejamento continua 100% 2D — o 3D nunca edita o projeto.
+- Visualização 3D do layout: existe como **aba 3D** (visualizador em
+  `public/simulations/projeto-3d.html`, carregado num iframe, fora do bundle do app). O modo
+  Editar do 3D faz edições básicas (selecionar, mover, girar 90°, duplicar, excluir, adicionar),
+  sempre pedidas ao editor por `postMessage` e aplicadas pelas mesmas ações do 2D — mesmo
+  histórico de desfazer e mesmo salvamento. A prancheta 2D continua sendo onde se faz o
+  planejamento preciso (medidas, propriedades, Fluxo).
 - Integração com sistemas de WMS/ERP.
 
 ## 5. Fluxos principais (visão geral)

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ExternalLink } from 'lucide-react'
 import { useEditorStore } from '../state/useEditorStore'
 import { Button } from '../../../shared/ui/Button'
+import { applyEditFrom3D, type EditMessage } from './applyEdit'
 
 /** Página estática do visualizador (public/simulations). Fica fora do bundle do app: o editor
  * continua 2D e o Three.js só é carregado quando a aba 3D é aberta. */
@@ -10,9 +11,9 @@ const VIEWER_URL = '/simulations/projeto-3d.html'
 const STORAGE_KEY = 'argus:3d-project'
 
 /**
- * Aba 3D: visualização somente leitura do projeto aberto (Layout + Fluxo). O projeto é enviado
- * ao iframe por postMessage a cada alteração, então o 3D acompanha o que é editado nas outras
- * abas sem recarregar.
+ * Aba 3D: o projeto aberto (Layout + Fluxo) em 3D. O projeto é enviado ao iframe por postMessage
+ * a cada alteração; edições feitas no 3D voltam como mensagens `argus:edit` e são aplicadas pelo
+ * store — o editor continua sendo a única fonte de verdade.
  */
 export function Sim3DView() {
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
@@ -32,7 +33,9 @@ export function Sim3DView() {
 
   useEffect(() => {
     function onMessage(e: MessageEvent) {
-      if (e.source === iframeRef.current?.contentWindow && e.data?.type === 'argus:ready') setViewerReady(true)
+      if (e.source !== iframeRef.current?.contentWindow || e.origin !== window.location.origin) return
+      if (e.data?.type === 'argus:ready') setViewerReady(true)
+      else if (e.data?.type === 'argus:edit') applyEditFrom3D(e.data as EditMessage)
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
@@ -46,6 +49,12 @@ export function Sim3DView() {
     }
     if (viewerReady) iframeRef.current?.contentWindow?.postMessage({ type: 'argus:project', project }, window.location.origin)
   }, [project, viewerReady])
+
+  // Seleção feita no 2D (ou criada por duplicar/adicionar) aparece selecionada no 3D.
+  const selectedId = useEditorStore((s) => (s.selectedIds.length === 1 ? s.selectedIds[0] : null))
+  useEffect(() => {
+    if (viewerReady) iframeRef.current?.contentWindow?.postMessage({ type: 'argus:selection', id: selectedId }, window.location.origin)
+  }, [selectedId, viewerReady, project])
 
   return (
     <div className="absolute inset-0 bg-[#0f172a]">

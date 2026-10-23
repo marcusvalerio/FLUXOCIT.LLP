@@ -34,6 +34,13 @@
   #forkBtns { position: fixed; right: 16px; bottom: 160px; display: none; flex-direction: column; gap: 8px; z-index: 7; }
   #forkBtns button { padding: 12px 16px; }
   #crosshair { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px; border-radius: 50%; background: rgba(255,255,255,.8); display: none; z-index: 5; pointer-events: none; }
+  #editbar { position: fixed; bottom: 8px; left: 50%; transform: translateX(-50%); display: none; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center;
+    padding: 8px 10px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); z-index: 6; max-width: calc(100vw - 240px); }
+  #editbar .sel { display: flex; flex-direction: column; min-width: 150px; } #editbar small { color: var(--muted); }
+  #editbar .acts { display: flex; gap: 4px; }
+  #editbar select { background: rgba(51, 65, 85, .75); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; }
+  button.danger { border-color: rgba(220, 38, 38, .6); } button:disabled { opacity: .45; cursor: default; }
+  @media (max-width: 760px) { #editbar { max-width: calc(100vw - 16px); bottom: 8px; } }
   #empty { position: fixed; inset: 0; display: none; place-items: center; text-align: center; padding: 24px; z-index: 8; background: #0f172a; }
   #empty a { color: #93c5fd; }
   @media (max-width: 760px) { #info { display: none; } #info.open { display: block; top: 56px; } #help { display: none; } #minimap { width: 140px; height: 94px; top: 56px; bottom: auto; } #infoBtn { display: inline-block !important; } }
@@ -49,6 +56,7 @@
   <button data-mode="follow">🎥 Seguir</button>
   <button data-mode="walk">🚶 Andar</button>
   <button data-mode="drive">🚜 Dirigir</button>
+  <button data-mode="edit" id="editBtn" style="display:none">✏️ Editar</button>
   <button id="infoBtn" style="display:none">ℹ</button>
 </header>
 <aside id="info">
@@ -67,6 +75,31 @@
   </div>
 </aside>
 <div id="alert"></div>
+<div id="editbar">
+  <div class="sel"><b id="e-name">Nenhum objeto selecionado</b><small id="e-meta">Clique em um objeto para selecionar</small></div>
+  <div class="acts">
+    <button id="e-rotl" title="Girar 90° (Q)">⟲ 90°</button>
+    <button id="e-rotr" title="Girar 90° (E)">⟳ 90°</button>
+    <button id="e-dup" title="Duplicar (Ctrl+D)">⧉ Duplicar</button>
+    <button id="e-del" title="Excluir (Delete)" class="danger">🗑 Excluir</button>
+  </div>
+  <div class="acts">
+    <select id="e-add" aria-label="Adicionar objeto">
+      <option value="">＋ Adicionar…</option>
+      <option value="rack">Porta-paletes</option>
+      <option value="pallet">Pallet</option>
+      <option value="storage-block">Blocado</option>
+      <option value="shelf">Estante</option>
+      <option value="forklift">Empilhadeira</option>
+      <option value="conveyor">Esteira</option>
+      <option value="column">Coluna</option>
+      <option value="wall">Parede</option>
+      <option value="area">Área</option>
+    </select>
+    <button id="e-undo" title="Desfazer (Ctrl+Z)">↶</button>
+    <button id="e-redo" title="Refazer (Ctrl+Shift+Z)">↷</button>
+  </div>
+</div>
 <div id="help"></div>
 <canvas id="minimap" width="420" height="280"></canvas>
 <div id="joy"><div id="knob"></div></div>
@@ -134,6 +167,7 @@ let agents = []
 let conveyorItems = []
 let roof = null
 let stats = { objects: 0, positions: 0, routes: 0, unlinked: 0 }
+let objInfo = []   // { id, o, f, h } — usado para selecionar/editar no 3D
 
 // ---------------------------------------------------------------- caixas instanciadas (estática inteira em 1 draw call)
 const unitBox = new THREE.BoxGeometry(1, 1, 1)
@@ -235,6 +269,16 @@ function rackLike(o, f, kind) {
   }
   obstacle(f)
 }
+const FLAT = new Set(['area', 'area-picking', 'area-staging', 'area-inspection', 'area-shipping', 'area-receiving', 'corridor', 'traffic-lane',
+  'flow-route', 'intersection', 'pedestrian-lane', 'safety-zone', 'directional-arrow', 'dock', 'scale'])
+function objHeight(o, f) {
+  const t = o.objectType
+  if (FLAT.has(t)) return 0.05
+  if (['rack', 'drive-in', 'push-back', 'flow-rack', 'cantilever'].includes(t)) return clamp(+o.properties?.levels || 3, 1, 10) * 1.55 + 0.4
+  if (t === 'shelf') return clamp(+o.properties?.levels || 3, 1, 10) * 0.5 + 0.1
+  if (t === 'storage-block') return clamp(+o.properties?.levels || 3, 1, 6) * 1.16
+  return { wall: +o.properties?.height || 6, column: ROOF_H, gate: 4.5, door: 2.4, stairs: 1.8, container: 2.6, forklift: 2.6, 'reach-truck': 4, 'order-picker': 2.6, tug: 1.1 }[t] ?? 1.2
+}
 function vehicle(f, color, kind) {
   const g = makeForklift(color, kind)
   g.g.position.set(f.cx, 0, f.cz); g.g.rotation.y = f.th + Math.PI / 2   // no 2D o comprimento da máquina é a largura do objeto
@@ -263,8 +307,10 @@ function build(project) {
   roof = new THREE.Mesh(new THREE.PlaneGeometry(W, D), M('#9ca3af')); roof.rotation.x = Math.PI / 2; roof.position.set(W / 2, ROOF_H, D / 2)
   roof.visible = document.getElementById('t-roof').classList.contains('on'); root.add(roof)
 
+  objInfo = []
   for (const o of objects) {
     const f = objFrame(o), t = o.objectType
+    objInfo.push({ id: o.id, o, f, h: objHeight(o, f) })
     const area = t === 'area' ? (o.properties?.areaType || 'custom') : AREA_SUBTYPE[t]
     if (area) {
       const color = AREA_COLORS[area] || '#334155'
@@ -361,6 +407,7 @@ function build(project) {
     !objects.length ? 'O layout está vazio: adicione objetos na aba Layout.' : '',
   ].filter(Boolean).join(' ')
   if (!walkerPlaced) placeWalker()
+  refreshSelection()
 }
 
 // ---------------------------------------------------------------- grade de navegação + A*
@@ -545,6 +592,7 @@ const HELP = {
   top: 'Vista de planta — igual à prancheta 2D · arraste para mover, roda para zoom',
   follow: 'Seguindo um agente do Fluxo · <kbd>N</kbd> próximo',
   walk: isTouch ? 'Joystick para andar · arraste na tela para olhar' : 'Clique para capturar o mouse · <kbd>W A S D</kbd> andar · <kbd>Shift</kbd> correr · <kbd>Esc</kbd> soltar',
+  edit: 'Clique para selecionar · arraste para mover',
   drive: isTouch ? 'Joystick: acelerar/virar · botões para o garfo' : '<kbd>W/S</kbd> acelerar/ré · <kbd>A/D</kbd> virar · <kbd>R/F</kbd> garfo · <kbd>E</kbd> ajustar ao pallet · <kbd>V</kbd> cabine/externa · <kbd>Espaço</kbd> freio',
 }
 function resetCamera(m) {
@@ -567,7 +615,13 @@ function setMode(m) {
   user.g.visible = m === 'drive'
   if (m !== 'walk' && document.pointerLockElement) document.exitPointerLock()
   if (m === 'orbit' || m === 'top') resetCamera(m)
+  if (m === 'edit' && (prevMode === 'walk' || prevMode === 'drive' || prevMode === 'follow')) resetCamera('orbit')
+  document.getElementById('editbar').style.display = m === 'edit' ? 'flex' : 'none'
+  document.getElementById('help').style.display = m === 'edit' ? 'none' : ''
+  if (m !== 'edit') { selBox.visible = ghost.visible = false } else refreshSelection()
+  prevMode = m
 }
+let prevMode = 'orbit'
 document.querySelectorAll('#modes button[data-mode]').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)))
 document.getElementById('infoBtn').onclick = () => document.getElementById('info').classList.toggle('open')
 addEventListener('keydown', (e) => {
@@ -759,6 +813,128 @@ function drawMinimap() {
   dot(walker.x, walker.z, walker.yaw, '#f97316', 4.5)
 }
 
+// ---------------------------------------------------------------- edição no 3D
+// O visualizador não altera o projeto sozinho: pede ao editor (postMessage) e o editor aplica com
+// as mesmas ações do 2D (histórico, salvamento automático). O projeto volta atualizado e o 3D é
+// reconstruído — uma única fonte de verdade.
+const embedded = parent !== window
+const editLine = (color) => new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0)), new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true }))
+const selBox = editLine('#3b82f6'), ghost = editLine('#22c55e')
+selBox.renderOrder = ghost.renderOrder = 10; selBox.visible = ghost.visible = false
+const ghostFill = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), new THREE.MeshBasicMaterial({ color: '#22c55e', transparent: true, opacity: 0.18, depthWrite: false }))
+ghost.add(ghostFill); scene.add(selBox, ghost)
+let selectedId = null, drag = null
+const TYPE_LABEL = { rack: 'Porta-paletes', 'drive-in': 'Drive-in', 'push-back': 'Push-back', 'flow-rack': 'Flow rack', cantilever: 'Cantilever', shelf: 'Estante',
+  'storage-block': 'Blocado', pallet: 'Pallet', forklift: 'Empilhadeira', 'reach-truck': 'Reach truck', 'order-picker': 'Selecionadora', conveyor: 'Esteira',
+  column: 'Coluna', wall: 'Parede', door: 'Porta', gate: 'Portão', dock: 'Doca', area: 'Área', 'area-picking': 'Área de picking', 'area-shipping': 'Área de expedição',
+  'area-receiving': 'Área de recebimento', 'area-staging': 'Staging', 'area-inspection': 'Conferência', 'pedestrian-lane': 'Faixa de pedestres', 'traffic-lane': 'Faixa de tráfego' }
+function send(op, data = {}) { if (embedded) parent.postMessage({ type: 'argus:edit', op, ...data }, location.origin) }
+function placeBox(b, f, h) { b.position.set(f.cx, 0, f.cz); b.rotation.set(0, f.th, 0); b.scale.set(f.w + 0.1, Math.max(h, 0.05) + 0.05, f.l + 0.1) }
+function refreshSelection() {
+  const info = objInfo.find((i) => i.id === selectedId)
+  if (!info) selectedId = null
+  selBox.visible = mode === 'edit' && !!info
+  if (info) placeBox(selBox, info.f, info.h)
+  document.getElementById('e-name').textContent = info ? (info.o.name || TYPE_LABEL[info.o.objectType] || info.o.objectType) : 'Nenhum objeto selecionado'
+  document.getElementById('e-meta').textContent = info
+    ? `${TYPE_LABEL[info.o.objectType] || info.o.objectType} · ${(info.o.width / 100).toFixed(2)} × ${(info.o.length / 100).toFixed(2)} m · ${Math.round(info.o.rotationDeg || 0)}°`
+    : 'Clique em um objeto para selecionar · arraste para mover'
+  for (const id of ['e-rotl', 'e-rotr', 'e-dup', 'e-del']) document.getElementById(id).disabled = !info
+}
+function select(id) { selectedId = id; refreshSelection(); send('select', { id }) }
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2()
+function rayFrom(e) { const r = renderer.domElement.getBoundingClientRect(); ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); ray.setFromCamera(ndc, camera); return ray.ray }
+function hitObject(r) {
+  // raio contra a caixa orientada de cada objeto (no referencial local); objetos baixos (áreas)
+  // perdem para os que estão em cima deles
+  let best = null, bt = Infinity
+  for (const i of objInfo) {
+    const c = Math.cos(-i.f.th), sn = Math.sin(-i.f.th)
+    const ox = r.origin.x - i.f.cx, oz = r.origin.z - i.f.cz, dx = r.direction.x, dz = r.direction.z
+    const o = [ox * c + oz * sn, r.origin.y, -ox * sn + oz * c], d = [dx * c + dz * sn, r.direction.y, -dx * sn + dz * c]
+    const lo = [-i.f.w / 2, 0, -i.f.l / 2], hi = [i.f.w / 2, Math.max(i.h, 0.05), i.f.l / 2]
+    let t0 = 0, t1 = Infinity
+    for (let k = 0; k < 3; k++) {
+      if (Math.abs(d[k]) < 1e-9) { if (o[k] < lo[k] || o[k] > hi[k]) { t0 = Infinity; break } continue }
+      let a = (lo[k] - o[k]) / d[k], b = (hi[k] - o[k]) / d[k]; if (a > b) [a, b] = [b, a]
+      t0 = Math.max(t0, a); t1 = Math.min(t1, b)
+    }
+    if (t0 > t1 || t0 === Infinity) continue
+    const score = t0 + (i.h <= 0.05 ? 1000 : 0)
+    if (score < bt) { bt = score; best = i }
+  }
+  return best
+}
+function groundPoint(r) { if (r.direction.y >= -1e-6) return null; const t = -r.origin.y / r.direction.y; return { x: r.origin.x + r.direction.x * t, z: r.origin.z + r.direction.z * t } }
+const snap = (v) => Math.round(v * 10) / 10   // 10 cm
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  if (mode !== 'edit' || e.button !== 0) return
+  const r = rayFrom(e), hit = hitObject(r)
+  drag = { sx: e.clientX, sy: e.clientY, info: hit, moved: false }
+  if (hit) {
+    if (hit.id !== selectedId) select(hit.id)
+    const g = groundPoint(r)
+    if (g) { drag.off = { x: hit.f.cx - g.x, z: hit.f.cz - g.z }; controls.enabled = false }
+  }
+}, true)
+addEventListener('pointermove', (e) => {
+  if (mode !== 'edit' || !drag?.info || !drag.off) return
+  if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 4) drag.moved = true
+  if (!drag.moved) return
+  const g = groundPoint(rayFrom(e)); if (!g) return
+  const i = drag.info
+  // mantém o objeto inteiro dentro do ambiente (meia-extensão da caixa girada)
+  const c = Math.abs(Math.cos(i.f.th)), sn = Math.abs(Math.sin(i.f.th))
+  const hx = Math.min(W / 2, (i.f.w * c + i.f.l * sn) / 2), hz = Math.min(D / 2, (i.f.w * sn + i.f.l * c) / 2)
+  drag.cx = clamp(snap(g.x + drag.off.x), hx, W - hx); drag.cz = clamp(snap(g.z + drag.off.z), hz, D - hz)
+  placeBox(ghost, { ...i.f, cx: drag.cx, cz: drag.cz }, i.h); ghost.visible = true
+})
+addEventListener('pointerup', (e) => {
+  if (mode !== 'edit' || !drag) return
+  const d = drag; drag = null; ghost.visible = false; controls.enabled = true
+  if (d.info && d.moved && d.cx != null) {
+    const o = d.info.o
+    send('move', { id: o.id, x: Math.round(d.cx * 100 - o.width / 2), y: Math.round(d.cz * 100 - o.length / 2) })
+    selBox.position.set(d.cx, 0, d.cz)   // resposta imediata; o projeto atualizado chega em seguida
+  } else if (!d.info && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < 5) select(null)
+})
+const editAct = {
+  rotl: () => selectedId && send('rotate', { id: selectedId, deltaDeg: -90 }),
+  rotr: () => selectedId && send('rotate', { id: selectedId, deltaDeg: 90 }),
+  dup: () => selectedId && send('duplicate', { id: selectedId }),
+  del: () => { if (selectedId) { send('delete', { id: selectedId }); selectedId = null; refreshSelection() } },
+}
+document.getElementById('e-rotl').onclick = editAct.rotl
+document.getElementById('e-rotr').onclick = editAct.rotr
+document.getElementById('e-dup').onclick = editAct.dup
+document.getElementById('e-del').onclick = editAct.del
+document.getElementById('e-undo').onclick = () => send('undo')
+document.getElementById('e-redo').onclick = () => send('redo')
+document.getElementById('e-add').onchange = (e) => {
+  const type = e.target.value; e.target.value = ''
+  if (!type) return
+  // insere no ponto do piso no centro da tela (ou no centro do ambiente)
+  ndc.set(0, 0); ray.setFromCamera(ndc, camera)
+  const g = groundPoint(ray.ray) || { x: W / 2, z: D / 2 }
+  send('add', { objectType: type, x: Math.round(clamp(g.x, 0, W) * 100), y: Math.round(clamp(g.z, 0, D) * 100) })
+}
+addEventListener('keydown', (e) => {
+  if (mode !== 'edit' || e.target.tagName === 'SELECT') return
+  const mod = e.ctrlKey || e.metaKey
+  if (mod && e.code === 'KeyZ') { e.preventDefault(); send(e.shiftKey ? 'redo' : 'undo') }
+  else if (mod && e.code === 'KeyY') { e.preventDefault(); send('redo') }
+  else if (mod && e.code === 'KeyD') { e.preventDefault(); editAct.dup() }
+  else if (e.code === 'Delete' || e.code === 'Backspace') { e.preventDefault(); editAct.del() }
+  else if (e.code === 'KeyQ') editAct.rotl()
+  else if (e.code === 'KeyE') editAct.rotr()
+  else if (e.code === 'Escape') select(null)
+})
+addEventListener('message', (e) => {
+  if (e.origin !== location.origin || e.data?.type !== 'argus:selection') return
+  if (e.data.id !== selectedId) { selectedId = e.data.id; refreshSelection() }
+})
+if (embedded) document.getElementById('editBtn').style.display = ''
+
 // ---------------------------------------------------------------- dados: editor → visualizador
 let project = null, firstBuild = true
 function load(p) {
@@ -804,7 +980,7 @@ renderer.setAnimationLoop(() => {
   }
   renderer.render(scene, camera); labelRenderer.render(scene, camera)
 })
-window.__viewer = { load, setMode, stats: () => stats, agents: () => agents, user, keys, pallets: () => pallets, slots: () => slots, carrying: () => carrying, hint: () => hint }
+window.__viewer = { screenOf: (id) => { const i = objInfo.find((q) => q.id === id); if (!i) return null; const v = new THREE.Vector3(i.f.cx, i.h / 2, i.f.cz).project(camera); return { x: (v.x + 1) / 2 * innerWidth, y: (1 - v.y) / 2 * innerHeight } }, selected: () => selectedId, load, setMode, stats: () => stats, agents: () => agents, user, keys, pallets: () => pallets, slots: () => slots, carrying: () => carrying, hint: () => hint }
 </script>
 </body>
 </html>
