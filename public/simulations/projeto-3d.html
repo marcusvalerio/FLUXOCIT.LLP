@@ -70,7 +70,7 @@
 <div id="help"></div>
 <canvas id="minimap" width="420" height="280"></canvas>
 <div id="joy"><div id="knob"></div></div>
-<div id="forkBtns"><button id="forkUp">▲ Garfo</button><button id="forkDown">▼ Garfo</button></div>
+<div id="forkBtns"><button id="forkUp">▲ Garfo</button><button id="forkAuto">⇕ Ajustar</button><button id="forkDown">▼ Garfo</button></div>
 <div id="empty"><div><h2>Nenhum projeto carregado</h2><p>Abra um projeto no ARGUS.LLP e use a aba <b>3D</b>.<br>
   Ou veja a <a href="armazem-3d.html">simulação de demonstração</a>.</p></div></div>
 
@@ -86,6 +86,7 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js'
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 
 const STORAGE_KEY = 'argus:3d-project'
 const ROOF_H = 9
@@ -107,6 +108,7 @@ const PALLET_COLORS = ['#c8a97e', '#b98f5c', '#d6c29a', '#a77b4f', '#9fb7c9', '#
 const renderer = new THREE.WebGLRenderer({ antialias: true })
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight)
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05
 document.getElementById('app').appendChild(renderer.domElement)
 const labelRenderer = new CSS2DRenderer({ element: document.getElementById('labels') })
 labelRenderer.setSize(innerWidth, innerHeight)
@@ -118,6 +120,9 @@ controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.49
 scene.add(new THREE.HemisphereLight('#ffffff', '#6b7280', 1.6))
 const sun = new THREE.DirectionalLight('#ffffff', 1.6); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048)
 scene.add(sun, sun.target)
+// reflexos suaves de um ambiente interno: metais e plásticos deixam de parecer chapados
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture
+scene.environmentIntensity = 0.35
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), new THREE.MeshStandardMaterial({ color: '#7c8a76' }))
 ground.rotation.x = -Math.PI / 2; ground.position.y = -0.02; ground.receiveShadow = true; scene.add(ground)
 
@@ -133,6 +138,17 @@ let stats = { objects: 0, positions: 0, routes: 0, unlinked: 0 }
 // ---------------------------------------------------------------- caixas instanciadas (estática inteira em 1 draw call)
 const unitBox = new THREE.BoxGeometry(1, 1, 1)
 let boxes = []
+// Pallets são entidades (podem ser pegos e movidos); as posições de rack/piso onde podem
+// ficar são "slots". Pallets parados são instâncias; o que está no garfo vira malha própria.
+let pallets = [], slots = [], palletInst = null, carrying = null
+function toWorld(f, x, z) { return { x: f.cx + x * Math.cos(f.th) + z * Math.sin(f.th), z: f.cz - x * Math.sin(f.th) + z * Math.cos(f.th) } }
+function addSlot(f, x, y, z) { const w = toWorld(f, x, z); const sl = { x: w.x, y, z: w.z, rot: f.th, pallet: null }; slots.push(sl); return sl }
+function addPallet(f, x, y, z, w, d, lh, color, slot = null) {
+  const p = toWorld(f, x, z)
+  const pl = { x: p.x, y, z: p.z, rot: f.th, w, d, lh, color, slot, mesh: null, idx: pallets.length }
+  if (slot) slot.pallet = pl
+  pallets.push(pl); return pl
+}
 const _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3(), _c = new THREE.Color()
 function objFrame(o) {
   const w = o.width / 100, l = o.length / 100
@@ -149,6 +165,33 @@ function flushBoxes() {
   boxes.forEach(([m, c], i) => { im.setMatrixAt(i, m); im.setColorAt(i, _c.set(c)) })
   im.count = boxes.length; im.castShadow = im.receiveShadow = true
   root.add(im)
+}
+const woodMat = M('#8B5E34', { roughness: 0.9 })
+function palletMatrices(p, base, load) {
+  _q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), p.rot)
+  base.compose(_p.set(p.x, p.y + 0.07, p.z), _q, _s.set(p.w, 0.14, p.d))
+  load.compose(_p.set(p.x, p.y + 0.14 + p.lh / 2, p.z), _q, _s.set(p.w - 0.05, p.lh, p.d - 0.1))
+}
+function buildPallets() {
+  const n = Math.max(1, pallets.length)
+  const base = new THREE.InstancedMesh(unitBox, woodMat, n), load = new THREE.InstancedMesh(unitBox, M('#ffffff', { roughness: 0.75 }), n)
+  const mb = new THREE.Matrix4(), ml = new THREE.Matrix4()
+  pallets.forEach((p, i) => { palletMatrices(p, mb, ml); base.setMatrixAt(i, mb); load.setMatrixAt(i, ml); load.setColorAt(i, _c.set(p.color)) })
+  base.count = load.count = pallets.length
+  for (const im of [base, load]) { im.castShadow = im.receiveShadow = true; root.add(im) }
+  palletInst = { base, load }
+}
+const ZERO = new THREE.Matrix4().makeScale(0, 0, 0)
+function hideInstance(p) { palletInst.base.setMatrixAt(p.idx, ZERO); palletInst.load.setMatrixAt(p.idx, ZERO); palletInst.base.instanceMatrix.needsUpdate = palletInst.load.instanceMatrix.needsUpdate = true }
+function showInstance(p) {
+  const mb = new THREE.Matrix4(), ml = new THREE.Matrix4(); palletMatrices(p, mb, ml)
+  palletInst.base.setMatrixAt(p.idx, mb); palletInst.load.setMatrixAt(p.idx, ml); palletInst.base.instanceMatrix.needsUpdate = palletInst.load.instanceMatrix.needsUpdate = true
+}
+function palletMesh(p) {   // origem no centro da base, profundidade ao longo de z local
+  const g = new THREE.Group()
+  const b = new THREE.Mesh(unitBox, woodMat); b.scale.set(p.w, 0.14, p.d); b.position.y = 0.07
+  const l = new THREE.Mesh(unitBox, M(p.color, { roughness: 0.75 })); l.scale.set(p.w - 0.05, p.lh, p.d - 0.1); l.position.y = 0.14 + p.lh / 2
+  b.castShadow = l.castShadow = true; g.add(b, l); return g
 }
 function obstacle(f, pad = 0) { obstacles.push({ cx: f.cx, cz: f.cz, hw: f.w / 2 + pad, hl: f.l / 2 + pad, c: Math.cos(f.th), s: -Math.sin(f.th) }) }
 function label(text, color, x, y, z) {
@@ -181,12 +224,13 @@ function rackLike(o, f, kind) {
     const per = shelf ? 2 : Math.max(1, Math.floor(bayLen / 1.3)), slotW = bayLen / per
     for (let lv = 0; lv < levels; lv++) for (let k = 0; k < per; k++) {
       stats.positions += shelf ? 0 : 1
-      if (R() > 0.72) continue
-      const x = bx - bayLen / 2 + slotW * (k + 0.5), y = lv * levelH + (lv ? 0 : 0.0)
-      const pw = Math.min(1.0, slotW - 0.15), pd = Math.min(1.2, f.l - 0.1), col = PALLET_COLORS[Math.floor(R() * PALLET_COLORS.length)]
+      const x = bx - bayLen / 2 + slotW * (k + 0.5), y = lv * levelH
+      const pw = Math.min(1.0, slotW - 0.15), pd = Math.min(1.2, f.l - 0.1)
+      const slot = shelf ? null : addSlot(f, x, y, 0)
+      const occupied = R() <= 0.72, col = PALLET_COLORS[Math.floor(R() * PALLET_COLORS.length)], lh = Math.min(1.0 + R() * 0.2, levelH - 0.35)
+      if (!occupied) continue
       if (shelf) { B(f, x, y + 0.05, 0, pw * 0.8, 0.35, pd * 0.7, col); continue }
-      B(f, x, y, 0, pw, 0.14, pd, '#8B5E34')
-      B(f, x, y + 0.14, 0, pw - 0.05, Math.min(1.0 + R() * 0.2, levelH - 0.35), pd - 0.1, kind === 'cantilever' ? '#78716c' : col)
+      addPallet(f, x, y, 0, pw, pd, lh, kind === 'cantilever' ? '#78716c' : col, slot)
     }
   }
   obstacle(f)
@@ -200,7 +244,7 @@ function build(project) {
   scene.remove(root); root = new THREE.Group(); scene.add(root)
   // remover o grupo não dispara 'removed' nos rótulos filhos: os elementos HTML ficariam órfãos
   document.querySelectorAll('#labels .lbl').forEach((el) => el.remove())
-  boxes = []; obstacles = []; agents = []; conveyorItems = []; stats = { objects: 0, positions: 0, routes: 0, unlinked: 0 }
+  boxes = []; obstacles = []; agents = []; conveyorItems = []; pallets = []; slots = []; carrying = null; user.load = null; stats = { objects: 0, positions: 0, routes: 0, unlinked: 0 }
   W = Math.max(1, project.widthM || 40); D = Math.max(1, project.heightM || 30)
   const objects = project.objects || []
   stats.objects = objects.length
@@ -234,17 +278,19 @@ function build(project) {
         const R = rng(hash(o.id)), nx = Math.max(1, Math.floor(f.w / 1.1)), nz = Math.max(1, Math.floor(f.l / 1.3)), lv = clamp(+o.properties?.levels || 3, 1, 6)
         for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
           const h = 1 + Math.floor(R() * lv); stats.positions += lv
-          for (let k = 0; k < h; k++) {
-            const x = -f.w / 2 + (i + 0.5) * f.w / nx, z = -f.l / 2 + (j + 0.5) * f.l / nz
-            B(f, x, k * 1.2, z, 1.0, 0.14, 1.2, '#8B5E34'); B(f, x, k * 1.2 + 0.14, z, 0.95, 1.0, 1.1, PALLET_COLORS[(i + j + k) % PALLET_COLORS.length])
+          const x = -f.w / 2 + (i + 0.5) * f.w / nx, z = -f.l / 2 + (j + 0.5) * f.l / nz
+          for (let k = 0; k < lv; k++) {
+            const slot = addSlot(f, x, k * 1.16, z)
+            if (k < h) addPallet(f, x, k * 1.16, z, 1.0, 1.2, 1.0, PALLET_COLORS[(i + j + k) % PALLET_COLORS.length], slot)
           }
         }
         obstacle(f); break
       }
       case 'pallet': case 'box': case 'container': case 'cage-pallet': {
         const h = t === 'container' ? 2.6 : t === 'box' ? Math.min(f.w, f.l) : 1.1
-        if (t === 'pallet') { B(f, 0, 0, 0, f.w, 0.14, f.l, '#8B5E34'); B(f, 0, 0.14, 0, f.w * 0.95, 1.0, f.l * 0.92, PALLET_COLORS[hash(o.id) % PALLET_COLORS.length]) }
-        else B(f, 0, 0, 0, f.w, h, f.l, t === 'container' ? '#b45309' : t === 'cage-pallet' ? '#9ca3af' : '#c8a97e')
+        // pallet solto: pode ser pego, então não vira obstáculo (o garfo precisa entrar nele)
+        if (t === 'pallet') { addPallet(f, 0, 0, 0, Math.min(f.w, 1.2), Math.min(f.l, 1.2), 1.0, PALLET_COLORS[hash(o.id) % PALLET_COLORS.length]); break }
+        B(f, 0, 0, 0, f.w, h, f.l, t === 'container' ? '#b45309' : t === 'cage-pallet' ? '#9ca3af' : '#c8a97e')
         obstacle(f); break
       }
       case 'wall': B(f, 0, 0, 0, f.w, +o.properties?.height || 6, f.l, '#cbd5e1'); obstacle(f); break
@@ -296,6 +342,7 @@ function build(project) {
     }
   }
   flushBoxes()
+  buildPallets()
   buildGrid()
   buildAgents(project, objects)
 
@@ -398,11 +445,14 @@ function makeForklift(color, kind = 'forklift') {
   const wg = new THREE.CylinderGeometry(0.3, 0.3, 0.22, 14).rotateZ(Math.PI / 2)
   for (const [x, z] of [[-0.6, 0.45], [0.6, 0.45], [-0.5, -0.9], [0.5, -0.9]]) { const w = new THREE.Mesh(wg, dark); w.position.set(x, 0.3, z); g.add(w) }
   for (const x of [-0.38, 0.38]) g.add(box(0.08, kind === 'reach-truck' ? 4 : 2.6, 0.12, steel, x, kind === 'reach-truck' ? 2 : 1.4, 0.85))
+  const inner = new THREE.Group(); g.add(inner)   // estágio interno do mastro: sobe junto com o garfo acima de 1,9 m
+  for (const x of [-0.3, 0.3]) inner.add(box(0.07, 2.5, 0.1, steel, x, 1.35, 0.92))
+  inner.add(box(0.67, 0.07, 0.1, steel, 0, 2.6, 0.92))
   const forks = new THREE.Group(); g.add(forks)
   forks.add(box(0.9, 0.5, 0.06, dark, 0, 0.3, 0.98))
   for (const x of [-0.3, 0.3]) forks.add(box(0.12, 0.05, 1.15, steel, x, 0.03, 1.55))
   if (kind === 'order-picker') g.add(box(0.9, 0.08, 0.8, steel, 0, 1.6, 0.4))
-  return { g, forks }
+  return { g, forks, inner }
 }
 const personGeo = new THREE.CapsuleGeometry(0.22, 0.85, 4, 10).translate(0, 0.65, 0), headGeo = new THREE.SphereGeometry(0.14, 12, 10).translate(0, 1.42, 0)
 function makePerson(color) { const g = new THREE.Group(); const b = new THREE.Mesh(personGeo, M(color)), h = new THREE.Mesh(headGeo, M('#e0b48c')); b.castShadow = true; g.add(b, h); return g }
@@ -461,6 +511,14 @@ scene.add(walker.g, user.g)
 function placeWalker() {
   const c = nearestFree(1.5, D - 1.5) || [1, 1]; walker.x = (c[0] + 0.5) * CELL; walker.z = (c[1] + 0.5) * CELL
   const u = nearestFree(W / 2, D - 3) || c; user.x = (u[0] + 0.5) * CELL; user.z = (u[1] + 0.5) * CELL
+  const first = pallets.find((p) => p.slot && p.y === 0)
+  if (first) {   // para em frente a um pallet do nível térreo, já alinhada
+    for (const s of [1, -1]) {
+      const th = first.rot + (s > 0 ? Math.PI : 0), x = first.x - Math.sin(th) * 4, z = first.z - Math.cos(th) * 4
+      const cell = grid[Math.floor(z / CELL) * GW + Math.floor(x / CELL)]
+      if (x > 1 && z > 1 && x < W - 1 && z < D - 1 && cell === 0) { user.x = x; user.z = z; user.th = th; break }
+    }
+  }
   walkerPlaced = true
 }
 function collide(x, z, r) {
@@ -479,7 +537,7 @@ function collide(x, z, r) {
   }
   return [x, z]
 }
-const keys = new Set(), joy = { x: 0, y: 0 }, forkBtn = { up: false, down: false }
+const keys = new Set(), joy = { x: 0, y: 0 }, forkBtn = { up: false, down: false, auto: false }
 const isTouch = matchMedia('(pointer: coarse)').matches
 const key = (...c) => c.some((k) => keys.has(k))
 const HELP = {
@@ -487,7 +545,7 @@ const HELP = {
   top: 'Vista de planta — igual à prancheta 2D · arraste para mover, roda para zoom',
   follow: 'Seguindo um agente do Fluxo · <kbd>N</kbd> próximo',
   walk: isTouch ? 'Joystick para andar · arraste na tela para olhar' : 'Clique para capturar o mouse · <kbd>W A S D</kbd> andar · <kbd>Shift</kbd> correr · <kbd>Esc</kbd> soltar',
-  drive: isTouch ? 'Joystick: acelerar/virar · botões para o garfo' : '<kbd>W/S</kbd> acelerar/ré · <kbd>A/D</kbd> virar · <kbd>R/F</kbd> garfo · <kbd>V</kbd> cabine/externa · <kbd>Espaço</kbd> freio',
+  drive: isTouch ? 'Joystick: acelerar/virar · botões para o garfo' : '<kbd>W/S</kbd> acelerar/ré · <kbd>A/D</kbd> virar · <kbd>R/F</kbd> garfo · <kbd>E</kbd> ajustar ao pallet · <kbd>V</kbd> cabine/externa · <kbd>Espaço</kbd> freio',
 }
 function resetCamera(m) {
   const sz = Math.max(W, D)
@@ -539,7 +597,7 @@ addEventListener('mousemove', (e) => {
   el.addEventListener('pointermove', (e) => { if (e.pointerId === id) move(e) })
   const end = () => { id = null; joy.x = joy.y = 0; knob.style.transform = '' }
   el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end)
-  for (const [btn, k] of [['forkUp', 'up'], ['forkDown', 'down']]) {
+  for (const [btn, k] of [['forkUp', 'up'], ['forkDown', 'down'], ['forkAuto', 'auto']]) {
     const b = document.getElementById(btn); b.addEventListener('pointerdown', () => (forkBtn[k] = true))
     for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => (forkBtn[k] = false))
   }
@@ -551,17 +609,116 @@ function updateWalker(dt) {
   ;[walker.x, walker.z] = collide(walker.x + (fx * fwd - fz * side) * sp * dt, walker.z + (fz * fwd + fx * side) * sp * dt, 0.3)
   walker.g.position.set(walker.x, 0, walker.z); walker.g.rotation.y = walker.yaw
 }
+// Geometria da empilhadeira (frente = +z local): o centro do pallet no garfo fica FORK_MID à
+// frente do centro da máquina; o corpo colide como dois círculos, e o garfo pode entrar no rack.
+const FORK_MID = 1.55, FORK_TOP = 0.055, H_MAX = 6.2
+const BODY = [[-0.85, 0.66], [0.15, 0.62]]   // [deslocamento à frente, raio]
+const markerMat = new THREE.MeshBasicMaterial({ color: '#22c55e', wireframe: true, transparent: true, opacity: 0.9 })
+const marker = new THREE.Mesh(unitBox, markerMat); marker.visible = false; scene.add(marker)
+let target = null, hint = '', liftAuto = null
+function forkMid() { return { x: user.x + Math.sin(user.th) * FORK_MID, z: user.z + Math.cos(user.th) * FORK_MID } }
+function aligned(a, b) { return Math.abs(Math.abs(angDiff(a, b)) - Math.PI / 2) > Math.PI / 2 - 0.22 }   // paralelo em qualquer sentido
+function findTarget() {
+  if (carrying) return null
+  const fx = Math.sin(user.th), fz = Math.cos(user.th), m = forkMid()
+  let best = null, bd = Infinity
+  for (const p of pallets) {
+    if (p === carrying) continue
+    const rx = p.x - user.x, rz = p.z - user.z, along = rx * fx + rz * fz, side = Math.abs(rx * fz - rz * fx)
+    if (along < 0.8 || along > 6 || side > 1.2 || p.y > H_MAX) continue
+    const d = Math.hypot(p.x - m.x, p.z - m.z) + side * 2 + Math.abs(p.y - user.h) * 0.3
+    if (d < bd) { bd = d; best = p }
+  }
+  return best
+}
+function pickUp(p) {
+  carrying = p; if (p.slot) { p.slot.pallet = null; p.slot = null }
+  hideInstance(p)
+  p.mesh = palletMesh(p); user.forks.add(p.mesh)
+  // mantém o pallet onde estava em relação ao garfo (sem "pulo"): só a altura encaixa no garfo
+  const rx = p.x - user.x, rz = p.z - user.z, fx = Math.sin(user.th), fz = Math.cos(user.th)
+  p.mesh.position.set(clamp(rx * fz - rz * fx, -0.3, 0.3), -0.04, clamp(rx * fx + rz * fz, FORK_MID - 0.35, FORK_MID + 0.35))
+  p.mesh.rotation.y = Math.abs(angDiff(p.rot, user.th)) > Math.PI / 2 ? Math.PI : 0
+  flash('Pallet no garfo — levante um pouco antes de sair (R)')
+}
+function setDown(slot) {
+  const p = carrying, wp = new THREE.Vector3(); p.mesh.getWorldPosition(wp)
+  p.mesh.removeFromParent(); p.mesh = null; carrying = null
+  if (slot) { p.x = slot.x; p.z = slot.z; p.y = slot.y; p.rot = slot.rot; slot.pallet = p; p.slot = slot }
+  else { p.x = wp.x; p.z = wp.z; p.y = 0; p.rot = user.th }
+  showInstance(p)
+  flash(slot && slot.y > 0.1 ? 'Pallet armazenado no rack ✔' : 'Pallet no piso ✔')
+}
+function supportUnder() {
+  // onde o pallet carregado apoiaria ao baixar: slot alinhado, topo de outro pallet ou piso
+  const wp = new THREE.Vector3(); carrying.mesh.getWorldPosition(wp)
+  let best = { y: 0, slot: null, blocked: false }
+  for (const sl of slots) {
+    if (Math.hypot(sl.x - wp.x, sl.z - wp.z) > 0.7 || sl.y > wp.y + 0.05) continue
+    const y = sl.pallet ? sl.y + 0.14 + sl.pallet.lh + 0.02 : sl.y
+    if (y <= wp.y + 0.05 && y >= best.y) best = { y, slot: sl.pallet ? null : sl, blocked: !!sl.pallet, snap: Math.hypot(sl.x - wp.x, sl.z - wp.z) < 0.45 && aligned(sl.rot, user.th) }
+  }
+  for (const p of pallets) if (p !== carrying && !p.slot && Math.hypot(p.x - wp.x, p.z - wp.z) < 0.9) {
+    const y = p.y + 0.14 + p.lh + 0.02; if (y <= wp.y + 0.05 && y > best.y) best = { y, slot: null, blocked: true }
+  }
+  return best
+}
+function moveBody(nx, nz) {
+  const fx = Math.sin(user.th), fz = Math.cos(user.th)
+  let x = nx, z = nz
+  for (let it = 0; it < 3; it++) for (const [off, r] of BODY) {
+    const cx = x + fx * off, cz = z + fz * off, [rx, rz] = collide(cx, cz, r)
+    x += rx - cx; z += rz - cz
+  }
+  return [x, z]
+}
 function updateUser(dt) {
   const thr = (key('KeyW', 'ArrowUp') ? 1 : 0) - (key('KeyS', 'ArrowDown') ? 1 : 0) - joy.y
   const steer = (key('KeyA', 'ArrowLeft') ? 1 : 0) - (key('KeyD', 'ArrowRight') ? 1 : 0) - joy.x
-  user.v += clamp((thr > 0 ? 3.5 : 1.5) * thr - user.v, -(key('Space') ? 6 : 2.5) * dt, 1.5 * dt)
+  const vmax = (carrying ? 2.6 : 3.5) * (user.h > 1 ? 0.45 : 1)   // carga alta: devagar
+  user.v += clamp((thr > 0 ? vmax : 1.5) * thr - user.v, -(key('Space') ? 6 : 2.5) * dt, 1.5 * dt)
   user.th = wrap(user.th + user.v * 0.55 * steer * dt)
-  user.h = clamp(user.h + ((key('KeyR') || forkBtn.up ? 1 : 0) - (key('KeyF') || forkBtn.down ? 1 : 0)) * 0.45 * dt, 0.05, 5)
-  const nx = user.x + Math.sin(user.th) * user.v * dt, nz = user.z + Math.cos(user.th) * user.v * dt
-  const [x, z] = collide(nx, nz, 1.1)
-  if (Math.hypot(x - nx, z - nz) > 0.01) user.v *= 0.3
+  const [x, z] = moveBody(user.x + Math.sin(user.th) * user.v * dt, user.z + Math.cos(user.th) * user.v * dt)
+  if (Math.hypot(x - user.x, z - user.z) < Math.abs(user.v * dt) * 0.5) user.v *= 0.3
   user.x = x; user.z = z
-  user.g.position.set(x, 0, z); user.g.rotation.y = user.th; user.forks.position.y = user.h
+
+  // garfo: manual (R/F) ou automático até a altura de encaixe (E)
+  let lift = (key('KeyR') || forkBtn.up ? 1 : 0) - (key('KeyF') || forkBtn.down ? 1 : 0)
+  if (lift) liftAuto = null
+  else if (liftAuto != null) { lift = Math.sign(liftAuto - user.h); if (Math.abs(liftAuto - user.h) < 0.01) { user.h = liftAuto; liftAuto = null; lift = 0 } }
+  const rate = (carrying ? 0.35 : 0.45) * dt
+  let nh = clamp(user.h + lift * rate, 0.05, H_MAX)
+  if (carrying && lift < 0) {
+    const sup = supportUnder(), bottom = nh - 0.04
+    if (bottom <= sup.y + 0.012) {   // o garfo para a 5 cm do piso: tolerância de apoio
+      if (sup.blocked && !sup.slot) { nh = sup.y + 0.04; hint = 'Posição ocupada' }
+      else if (sup.y > 0.1 && !sup.snap) { nh = sup.y + 0.04; hint = 'Desalinhado com a posição do rack — ajuste a empilhadeira' }
+      else { setDown(sup.snap ? sup.slot : null); nh = Math.max(0.05, nh - 0.03) }
+    }
+  }
+  user.h = nh
+
+  // encaixe: garfo dentro das aberturas do pallet, alinhado, subindo
+  target = findTarget()
+  hint = carrying ? (hint && lift < 0 ? hint : '') : ''
+  if (target) {
+    const m = forkMid(), dist = Math.hypot(target.x - m.x, target.z - m.z), want = target.y + 0.06
+    const ok = aligned(target.rot, user.th), inside = dist < 0.4, heightOk = user.h > target.y && user.h < target.y + 0.12
+    if (inside && ok && heightOk && lift > 0) pickUp(target)
+    else if (!ok) hint = 'Alinhe a empilhadeira de frente para o pallet'
+    else if (!heightOk) hint = `Ajuste o garfo para ${want.toFixed(2)} m — tecla E ajusta sozinho`
+    else if (!inside) hint = `Avance ${Math.max(0, dist).toFixed(1)} m com o garfo nas aberturas`
+    else hint = 'Encaixado — levante o garfo (R)'
+    marker.visible = !carrying
+    marker.position.set(target.x, target.y + 0.07 + target.lh / 2, target.z); marker.rotation.y = target.rot
+    marker.scale.set(target.w + 0.08, target.lh + 0.2, target.d + 0.08)
+    markerMat.color.set(inside && ok && heightOk ? '#22c55e' : '#f59e0b')
+    if (key('KeyE') || forkBtn.auto) liftAuto = want
+  } else marker.visible = false
+  if (carrying && key('KeyE')) liftAuto = Math.max(0.3, user.h)
+
+  user.g.position.set(user.x, 0, user.z); user.g.rotation.y = user.th; user.forks.position.y = user.h
+  if (user.inner) user.inner.position.y = Math.max(0, user.h - 1.9)
 }
 function updateCamera() {
   if (mode === 'follow' && agents.length) {
@@ -584,7 +741,7 @@ function updateAlert(dt) {
     const me = mode === 'walk' ? walker : user
     const near = agents.filter((a) => a.machine).reduce((m, a) => Math.min(m, Math.hypot(a.x - me.x, a.z - me.z)), Infinity)
     if (near < 4) msg = `⚠ Empilhadeira a ${near.toFixed(1)} m`
-    else if (mode === 'drive') { msg = `${(Math.abs(user.v) * 3.6).toFixed(1)} km/h · garfo ${user.h.toFixed(2)} m`; cls = 'warn' }
+    else if (mode === 'drive') { msg = `${(Math.abs(user.v) * 3.6).toFixed(1)} km/h · garfo ${user.h.toFixed(2)} m${carrying ? ' · carregado' : ''}${hint ? ' — ' + hint : ''}`; cls = 'warn' }
   }
   alertEl.style.display = msg ? 'block' : 'none'; alertEl.textContent = msg; alertEl.className = cls
 }
@@ -647,7 +804,7 @@ renderer.setAnimationLoop(() => {
   }
   renderer.render(scene, camera); labelRenderer.render(scene, camera)
 })
-window.__viewer = { load, setMode, stats: () => stats, agents: () => agents }
+window.__viewer = { load, setMode, stats: () => stats, agents: () => agents, user, keys, pallets: () => pallets, slots: () => slots, carrying: () => carrying, hint: () => hint }
 </script>
 </body>
 </html>
