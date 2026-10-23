@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Copy, LayoutGrid, LogOut, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Box, Copy, LayoutGrid, LogOut, Pencil, Plus, Trash2 } from 'lucide-react'
 import { layoutRepository } from '../../shared/data/repository'
+import { DEMO_PROJECT, buildDemoFlow, buildDemoObjects } from '../../shared/data/demoProject'
 import { isAccountModeEnabled } from '../../shared/data/authMode'
 import { useAuthStore } from '../auth/state/useAuthStore'
 import { DEFAULT_ENV_HEIGHT_M, DEFAULT_ENV_WIDTH_M } from '../editor/state/useEditorStore'
@@ -65,6 +66,22 @@ export function LayoutsListPage() {
       heightM,
     })
     navigate(`/editor/${layout.id}`)
+  }
+
+  const [creatingDemo, setCreatingDemo] = useState(false)
+  /** Cria uma cópia nova do projeto demonstrativo (Layout + Fluxo vinculado) e abre no editor. */
+  async function handleCreateDemo() {
+    setCreatingDemo(true)
+    try {
+      const layout = await layoutRepository.createLayout({ name: DEMO_PROJECT.name, widthM: DEMO_PROJECT.widthM, heightM: DEMO_PROJECT.heightM })
+      await layoutRepository.saveLayoutObjects(layout.id, buildDemoObjects())
+      const { flowNodes, flowConnections } = buildDemoFlow()
+      await layoutRepository.saveFlowBoard(layout.id, flowNodes, flowConnections)
+      navigate(`/editor/${layout.id}`)
+    } catch {
+      setLoadError('Não foi possível criar o projeto demonstrativo. Tente novamente.')
+      setCreatingDemo(false)
+    }
   }
 
   function startRename(layout: LayoutSummary) {
@@ -133,6 +150,10 @@ export function LayoutsListPage() {
               <span className="hidden truncate text-xs text-text-secondary sm:inline">{user.email}</span>
             )}
             <ThemeToggle />
+            <Button variant="secondary" onClick={handleCreateDemo} disabled={creatingDemo}>
+              <Box size={18} />
+              <span className="hidden sm:inline">Projeto demonstrativo</span>
+            </Button>
             <Button variant="primary" onClick={() => setCreating(true)}>
               <Plus size={18} />
               <span className="hidden sm:inline">Novo projeto</span>
@@ -230,6 +251,10 @@ export function LayoutsListPage() {
             <Button variant="primary" onClick={() => setCreating(true)}>
               <Plus size={18} />
               Criar novo projeto
+            </Button>
+            <Button variant="secondary" onClick={handleCreateDemo} disabled={creatingDemo}>
+              <Box size={18} />
+              Abrir projeto demonstrativo
             </Button>
           </Panel>
         )}
