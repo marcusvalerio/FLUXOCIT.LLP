@@ -23,6 +23,7 @@
   #info dl { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; margin: 0; }
   #info dt { color: var(--muted); } #info dd { margin: 0; font-weight: 600; text-align: right; }
   #info .warn { margin-top: 8px; color: #fcd34d; font-size: 12px; }
+  #info .credit { margin-top: 8px; color: var(--muted); font-size: 11px; } #info .credit a { color: #93c5fd; }
   #info .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
   #alert { position: fixed; top: 58px; left: 50%; transform: translateX(-50%); padding: 8px 14px; border-radius: 10px; background: rgba(220, 38, 38, .92); font-weight: 600; z-index: 6; display: none; }
   #alert.warn { background: rgba(217, 119, 6, .92); }
@@ -72,7 +73,9 @@
     <button id="t-anim" class="on">⏸ Animação</button>
     <button id="t-labels" class="on">Rótulos</button>
     <button id="t-roof" class="on">Teto</button>
+    <button id="t-usd" title="Modelos 3D realistas da NVIDIA (SimReady)">Modelos NVIDIA</button>
   </div>
+  <div id="i-usd" class="credit"></div>
 </aside>
 <div id="alert"></div>
 <div id="editbar">
@@ -218,6 +221,74 @@ function palletMatrices(p, base, load) {
   base.compose(_p.set(p.x, p.y + 0.07, p.z), _q, _s.set(p.w, 0.14, p.d))
   load.compose(_p.set(p.x, p.y + 0.14 + p.lh / 2, p.z), _q, _s.set(p.w - 0.05, p.lh, p.d - 0.1))
 }
+// ---------------------------------------------------------------- modelos realistas (OpenUSD)
+// Modelos SimReady da NVIDIA (CC BY 4.0), lidos pelo @huggingface/usd-web-viewer (servido de
+// /vendor). Tudo é opcional: se o download ou a leitura falhar, fica o modelo próprio.
+const USD_BASE = 'https://huggingface.co/datasets/nvidia/PhysicalAI-SimReady-Warehouse-01/resolve/main/'
+const USD_MODELS = {
+  pallet: 'Props/assembly/Pallets_A1/Pallets_A1.usd',
+  box: 'Props/general/Cardbox_A1/Cardbox_A1.usd',
+}
+const USD_KEY = 'argus:usd-models'
+const usdModels = {}           // tipo → { template, bb } (só os que carregaram)
+let usdState = 'off'           // off | loading | ready
+let usdEnabled = true
+try { usdEnabled = localStorage.getItem(USD_KEY) !== 'off' } catch { /* sem armazenamento: padrão ligado */ }
+const usdModel = (type) => (usdEnabled ? usdModels[type] : null)
+// Matriz que encaixa o modelo na caixa do objeto: base no piso, centralizado, girado 90° se o
+// lado comprido do modelo estiver no eixo errado; h = null mantém a proporção da altura.
+function fitMatrix(model, w, h, d) {
+  const size = model.bb.getSize(new THREE.Vector3()), c = model.bb.getCenter(new THREE.Vector3())
+  const rot = Math.abs(size.x - size.z) > 0.05 * Math.max(size.x, size.z) && (size.x > size.z) !== (w > d)
+  const sx = rot ? size.z : size.x, sz = rot ? size.x : size.z
+  const kx = w / sx, kz = d / sz, ky = h ? h / size.y : (kx + kz) / 2
+  return new THREE.Matrix4().makeScale(kx, ky, kz)
+    .multiply(rot ? new THREE.Matrix4().makeRotationY(Math.PI / 2) : new THREE.Matrix4())
+    .multiply(new THREE.Matrix4().makeTranslation(-c.x, -model.bb.min.y, -c.z))
+}
+function modelParts(model) {   // malhas do modelo com a matriz relativa à raiz
+  const parts = []
+  model.template.traverse((m) => { if (m.isMesh) parts.push({ geometry: m.geometry, material: m.material, local: m.matrixWorld.clone() }) })
+  return parts
+}
+function modelInstance(model, fit) {   // cópia avulsa (ex.: pallet no garfo, caixa)
+  const g = new THREE.Group()
+  for (const pt of modelParts(model)) {
+    const m = new THREE.Mesh(pt.geometry, pt.material); m.matrixAutoUpdate = false
+    m.matrix.copy(fit).multiply(pt.local); m.castShadow = m.receiveShadow = true; g.add(m)
+  }
+  return g
+}
+async function loadUsdModels() {
+  if (usdState !== 'off') return
+  usdState = 'loading'; usdStatus()
+  let lib
+  try { lib = await import('../vendor/usd-web-viewer/esm/index.js') } catch (e) { console.warn('Leitor USD indisponível', e); usdState = 'ready'; usdStatus(); return }
+  await Promise.all(Object.entries(USD_MODELS).map(async ([type, path]) => {
+    try {
+      const { root: r, complete } = await lib.loadUsd(USD_BASE + path, { textures: 'preview', maxTextureSize: 512 })
+      await complete.catch(() => {})
+      r.updateMatrixWorld(true)
+      const bb = new THREE.Box3().setFromObject(r)
+      if (bb.isEmpty()) throw new Error('modelo vazio')
+      usdModels[type] = { template: r, bb }
+    } catch (e) { console.warn(`Modelo USD de "${type}" não carregou; usando o modelo próprio`, e) }
+  }))
+  usdState = 'ready'; usdStatus()
+  if (project && Object.keys(usdModels).length) build(project)
+}
+function usdStatus() {
+  const el = document.getElementById('i-usd'), btn = document.getElementById('t-usd')
+  btn.classList.toggle('on', usdEnabled)
+  const names = { pallet: 'pallet', box: 'caixa' }
+  const ok = Object.keys(usdModels).map((t) => names[t] || t)
+  const credit = 'Modelos 3D: <a href="https://huggingface.co/datasets/nvidia/PhysicalAI-SimReady-Warehouse-01" target="_blank" rel="noopener">NVIDIA SimReady Warehouse</a> (CC BY 4.0)'
+  el.innerHTML = !usdEnabled ? 'Modelos NVIDIA desligados — usando os modelos próprios.'
+    : usdState === 'loading' ? 'Carregando modelos NVIDIA…'
+    : ok.length ? `Modelos NVIDIA ativos: ${ok.join(', ')}.<br>${credit}`
+    : usdState === 'ready' ? 'Modelos NVIDIA indisponíveis — usando os modelos próprios.' : ''
+}
+
 function buildPallets() {
   const n = Math.max(1, pallets.length)
   const base = new THREE.InstancedMesh(palletGeo, woodMat, n), load = new THREE.InstancedMesh(unitBox, M('#ffffff', { roughness: 0.75 }), n)
@@ -225,19 +296,38 @@ function buildPallets() {
   pallets.forEach((p, i) => { palletMatrices(p, mb, ml); base.setMatrixAt(i, mb); load.setMatrixAt(i, ml); load.setColorAt(i, _c.set(p.color)) })
   base.count = load.count = pallets.length
   for (const im of [base, load]) { im.castShadow = im.receiveShadow = true; root.add(im) }
-  palletInst = { base, load }
+  palletInst = { base, load, extra: [] }
+  const model = usdModel('pallet')
+  if (model) {   // troca a base própria pelas malhas do modelo, instanciadas do mesmo jeito
+    base.visible = false
+    for (const pt of modelParts(model)) {
+      const im = new THREE.InstancedMesh(pt.geometry, pt.material, n); im.castShadow = im.receiveShadow = true
+      palletInst.extra.push({ im, local: pt.local }); root.add(im)
+    }
+    pallets.forEach((p, i) => setExtra(p, i, false))
+    for (const e of palletInst.extra) e.im.count = pallets.length
+  }
+}
+function palletFit(p) { return fitMatrix(usdModel('pallet'), p.w, 0.144, p.d) }
+function setExtra(p, i, hidden) {
+  if (!palletInst.extra.length) return
+  const world = hidden ? null : new THREE.Matrix4().compose(_p.set(p.x, p.y, p.z), _q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), p.rot), _s.set(1, 1, 1)).multiply(palletFit(p))
+  for (const e of palletInst.extra) { e.im.setMatrixAt(i, hidden ? ZERO : world.clone().multiply(e.local)); e.im.instanceMatrix.needsUpdate = true }
 }
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0)
-function hideInstance(p) { palletInst.base.setMatrixAt(p.idx, ZERO); palletInst.load.setMatrixAt(p.idx, ZERO); palletInst.base.instanceMatrix.needsUpdate = palletInst.load.instanceMatrix.needsUpdate = true }
+function hideInstance(p) { palletInst.base.setMatrixAt(p.idx, ZERO); palletInst.load.setMatrixAt(p.idx, ZERO); palletInst.base.instanceMatrix.needsUpdate = palletInst.load.instanceMatrix.needsUpdate = true; setExtra(p, p.idx, true) }
 function showInstance(p) {
   const mb = new THREE.Matrix4(), ml = new THREE.Matrix4(); palletMatrices(p, mb, ml)
   palletInst.base.setMatrixAt(p.idx, mb); palletInst.load.setMatrixAt(p.idx, ml); palletInst.base.instanceMatrix.needsUpdate = palletInst.load.instanceMatrix.needsUpdate = true
+  setExtra(p, p.idx, false)
 }
 function palletMesh(p) {   // origem no centro da base, profundidade ao longo de z local
   const g = new THREE.Group()
-  const b = new THREE.Mesh(palletGeo, woodMat); b.scale.set(p.w, 0.14, p.d); b.position.y = 0.07
   const l = new THREE.Mesh(unitBox, M(p.color, { roughness: 0.75 })); l.scale.set(p.w - 0.05, p.lh, p.d - 0.1); l.position.y = 0.14 + p.lh / 2
-  b.castShadow = l.castShadow = true; g.add(b, l); return g
+  l.castShadow = true; g.add(l)
+  if (usdModel('pallet')) g.add(modelInstance(usdModel('pallet'), palletFit(p)))
+  else { const b = new THREE.Mesh(palletGeo, woodMat); b.scale.set(p.w, 0.14, p.d); b.position.y = 0.07; b.castShadow = true; g.add(b) }
+  return g
 }
 function obstacle(f, pad = 0) { obstacles.push({ cx: f.cx, cz: f.cz, hw: f.w / 2 + pad, hl: f.l / 2 + pad, c: Math.cos(f.th), s: -Math.sin(f.th) }) }
 function label(text, color, x, y, z) {
@@ -557,7 +647,10 @@ function build(project) {
         if (t === 'pallet') { addPallet(f, 0, 0, 0, Math.min(f.w, 1.2), Math.min(f.l, 1.2), 1.0, PALLET_COLORS[hash(o.id) % PALLET_COLORS.length]); break }
         if (t === 'container') container(f, o)
         else if (t === 'cage-pallet') cagePallet(f, o)
-        else cardboardBox(f, o)
+        else if (usdModel('box')) {
+          const g = modelInstance(usdModel('box'), fitMatrix(usdModel('box'), f.w, +o.properties?.height || Math.min(f.w, f.l, 0.8), f.l))
+          g.matrixAutoUpdate = false; g.matrix.copy(f.m); root.add(g)
+        } else cardboardBox(f, o)
         obstacle(f); break
       }
       case 'wall': wallModel(f, o); obstacle(f); break
@@ -1151,6 +1244,7 @@ function load(p) {
   project = p
   document.getElementById('empty').style.display = 'none'
   build(p)
+  if (usdEnabled) loadUsdModels()
   if (firstBuild) { resetCamera('orbit'); setMode('orbit'); firstBuild = false }
 }
 addEventListener('message', (e) => {
@@ -1166,6 +1260,14 @@ const t = (id, fn) => document.getElementById(id).addEventListener('click', (e) 
 t('t-anim', (on) => { animOn = on; document.getElementById('t-anim').textContent = on ? '⏸ Animação' : '▶ Animação' })
 t('t-labels', (on) => (document.getElementById('labels').style.display = on ? '' : 'none'))
 t('t-roof', (on) => roof && (roof.visible = on))
+document.getElementById('t-usd').addEventListener('click', () => {
+  usdEnabled = !usdEnabled
+  try { localStorage.setItem(USD_KEY, usdEnabled ? 'on' : 'off') } catch { /* preferência só nesta sessão */ }
+  usdStatus()
+  if (usdEnabled && usdState === 'off') loadUsdModels()
+  else if (project) build(project)
+})
+usdStatus()
 
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); labelRenderer.setSize(innerWidth, innerHeight) })
 const clock = new THREE.Clock()
