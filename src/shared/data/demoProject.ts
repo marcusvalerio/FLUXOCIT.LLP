@@ -13,8 +13,9 @@ import type { FlowConnection, FlowNode } from '../../types/flow'
  * - NR-12 item 12.2.1: vias principais de circulação de pessoas com no mínimo 1,20 m, demarcadas
  *   e segregadas do tráfego de máquinas; travessia sinalizada onde a faixa cruza o corredor.
  * - NR-26 / ABNT NBR 7195: demarcações em amarelo para circulação e zonas de risco.
- * - NR-23 + instruções técnicas do Corpo de Bombeiros: rota de pedestres contínua até a porta de
- *   pessoas (saída) e corredores livres de obstáculos.
+ * - NR-23 + instruções técnicas do Corpo de Bombeiros: rota de pedestres contínua até a saída,
+ *   corredores livres, extintores a até 20 m, hidrante, placas de saída e iluminação de emergência.
+ * - NR-10/NR-11: lava-olhos junto à área de recarga de baterias.
  * - ABNT NBR 15524 (porta-paletes): colunas protegidas e ruas com acesso pelos dois lados.
  * Medidas em cm, como em todo LayoutObject.
  */
@@ -104,6 +105,26 @@ export function buildDemoObjects(): LayoutObject[] {
     obj('demo-jack', 'pallet-jack', 'equipment', 3280, 1250, 68, 150),
     obj('demo-tug', 'tug', 'equipment', 3380, 1250, 70, 130),
     obj('demo-cart', 'platform-cart', 'equipment', 3280, 1480, 80, 120),
+
+    // --- Combate a incêndio e emergência (NR-23 + IT do Corpo de Bombeiros): extintores com
+    // demarcação de piso cobrindo o galpão, hidrante, placas de saída ao longo da rota de pedestres,
+    // iluminação de emergência e lava-olhos junto à recarga de baterias.
+    obj('demo-ext-1', 'fire-extinguisher', 'safety', 160, 1000, 70, 70, { agent: 'abc' }, 'Extintor 1'),
+    obj('demo-ext-2', 'fire-extinguisher', 'safety', 160, 2000, 70, 70, { agent: 'abc' }, 'Extintor 2'),
+    obj('demo-ext-3', 'fire-extinguisher', 'safety', 900, 2200, 70, 70, { agent: 'abc' }, 'Extintor 3'),
+    obj('demo-ext-4', 'fire-extinguisher', 'safety', 1860, 1500, 70, 70, { agent: 'abc' }, 'Extintor 4'),
+    obj('demo-ext-5', 'fire-extinguisher', 'safety', 2720, 300, 70, 70, { agent: 'abc' }, 'Extintor 5'),
+    obj('demo-ext-6', 'fire-extinguisher', 'safety', 2720, 1500, 70, 70, { agent: 'co2' }, 'Extintor 6 (recarga)'),
+    obj('demo-ext-7', 'fire-extinguisher', 'safety', 2720, 2100, 70, 70, { agent: 'abc' }, 'Extintor 7'),
+    obj('demo-ext-8', 'fire-extinguisher', 'safety', 3420, 1750, 70, 70, { agent: 'abc' }, 'Extintor 8'),
+    obj('demo-hydrant', 'fire-hydrant', 'safety', 1320, 2400, 90, 30, {}, 'Hidrante'),
+    obj('demo-exit-sign-1', 'emergency-exit', 'safety', 60, 2540, 60, 20, {}, 'Saída'),
+    obj('demo-exit-sign-2', 'emergency-exit', 'safety', 60, 1300, 60, 20, {}, 'Rota de fuga', 90),
+    obj('demo-light-1', 'emergency-light', 'safety', 70, 700, 40, 15),
+    obj('demo-light-2', 'emergency-light', 'safety', 70, 1900, 40, 15),
+    obj('demo-light-3', 'emergency-light', 'safety', 1600, 2560, 40, 15),
+    obj('demo-light-4', 'emergency-light', 'safety', 2750, 1050, 40, 15),
+    obj('demo-eyewash', 'eyewash', 'safety', 3380, 1580, 70, 70, {}, 'Lava-olhos (recarga)'),
 
     // --- Recebimento e expedição
     obj('demo-scale', 'scale', 'equipment', 3300, 2000, 100, 100),

@@ -5,6 +5,7 @@ export type ObjectCategory =
   | 'equipment'
   | 'area'
   | 'flow'
+  | 'safety'
   | 'other'
 
 export type ObjectTypeKey =
@@ -50,6 +51,11 @@ export type ObjectTypeKey =
   | 'box'
   | 'container'
   | 'cage-pallet'
+  | 'fire-extinguisher'
+  | 'fire-hydrant'
+  | 'emergency-exit'
+  | 'emergency-light'
+  | 'eyewash'
 
 /** All measurements (x, y, width, length) are in centimeters. Rotation is in degrees [0, 360). */
 export interface LayoutObject {

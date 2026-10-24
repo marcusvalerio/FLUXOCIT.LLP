@@ -73,9 +73,10 @@ export function computeOccupancyPercent(objects: LayoutObject[], envWidthCm: num
 
 /** Recommended minimum corridor width per traffic type, in cm — general logistics reference
  * figures (not a certified standard), used only to flag a corridor for review. Never blocks
- * placement. See docs/BUSINESS_RULES.md § Regras espaciais (Fase 8). */
+ * placement. Pedestrian routes follow NR-12 item 12.2.1 (main circulation routes ≥ 1,20 m).
+ * See docs/BUSINESS_RULES.md § Regras espaciais (Fase 8). */
 export const CORRIDOR_MIN_WIDTH_CM: Record<string, number> = {
-  pedestrian: 90,
+  pedestrian: 120,
   picking: 90,
   mixed: 200,
   pallets: 250,

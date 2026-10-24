@@ -35,6 +35,7 @@ import { Rack } from './renderers/Rack'
 import { ReachTruck } from './renderers/ReachTruck'
 import { RfScanner } from './renderers/RfScanner'
 import { SafetyZone } from './renderers/SafetyZone'
+import { EmergencyExit, EmergencyLight, Eyewash, FireExtinguisher, FireHydrant } from './renderers/SafetyEquipment'
 import { Scale } from './renderers/Scale'
 import { Shelf } from './renderers/Shelf'
 import { SortingBench } from './renderers/SortingBench'
@@ -673,9 +674,76 @@ export const OBJECT_CATALOG: Record<ObjectTypeKey, ObjectTypeDefinition> = {
     render: CagePallet,
     propertyFields: [...BASE_FIELDS],
   },
+
+  // --- Segurança: combate a incêndio e emergência (NR-23 + instruções técnicas do Corpo de
+  // Bombeiros, NR-26 para cores). Posicionamento e quantidade dependem do projeto de prevenção.
+  'fire-extinguisher': {
+    key: 'fire-extinguisher',
+    category: 'safety',
+    label: 'Extintor',
+    defaultWidth: 70,
+    defaultLength: 70,
+    resizable: false,
+    render: FireExtinguisher,
+    propertyFields: [
+      ...BASE_FIELDS,
+      {
+        key: 'agent',
+        label: 'Agente',
+        kind: 'select',
+        options: [
+          { value: 'abc', label: 'Pó ABC' },
+          { value: 'bc', label: 'Pó BC' },
+          { value: 'water', label: 'Água (A)' },
+          { value: 'co2', label: 'CO₂ (BC)' },
+        ],
+      },
+    ],
+    defaultProperties: { agent: 'abc' },
+  },
+  'fire-hydrant': {
+    key: 'fire-hydrant',
+    category: 'safety',
+    label: 'Hidrante',
+    defaultWidth: 90,
+    defaultLength: 30,
+    resizable: false,
+    render: FireHydrant,
+    propertyFields: [...BASE_FIELDS],
+  },
+  'emergency-exit': {
+    key: 'emergency-exit',
+    category: 'safety',
+    label: 'Saída de emergência',
+    defaultWidth: 60,
+    defaultLength: 20,
+    resizable: false,
+    render: EmergencyExit,
+    propertyFields: [...BASE_FIELDS],
+  },
+  'emergency-light': {
+    key: 'emergency-light',
+    category: 'safety',
+    label: 'Iluminação de emergência',
+    defaultWidth: 40,
+    defaultLength: 15,
+    resizable: false,
+    render: EmergencyLight,
+    propertyFields: [...BASE_FIELDS],
+  },
+  eyewash: {
+    key: 'eyewash',
+    category: 'safety',
+    label: 'Lava-olhos / chuveiro',
+    defaultWidth: 70,
+    defaultLength: 70,
+    resizable: false,
+    render: Eyewash,
+    propertyFields: [...BASE_FIELDS],
+  },
 }
 
-export const OBJECT_CATEGORIES_ORDER = ['structure', 'storage', 'pallet', 'equipment', 'area', 'flow'] as const
+export const OBJECT_CATEGORIES_ORDER = ['structure', 'storage', 'pallet', 'equipment', 'area', 'flow', 'safety'] as const
 
 export const CATEGORY_LABELS: Record<string, string> = {
   structure: 'Estrutura',
@@ -684,6 +752,7 @@ export const CATEGORY_LABELS: Record<string, string> = {
   equipment: 'Equipamentos',
   area: 'Áreas',
   flow: 'Fluxos',
+  safety: 'Segurança',
   other: 'Outros',
 }
 
@@ -740,6 +809,11 @@ const OBJECT_DESCRIPTIONS: Partial<Record<ObjectTypeKey, string>> = {
   intersection: 'Cruzamento de rotas',
   'safety-zone': 'Zona de segurança',
   'pedestrian-lane': 'Faixa de pedestres',
+  'fire-extinguisher': 'Combate a incêndio',
+  'fire-hydrant': 'Combate a incêndio',
+  'emergency-exit': 'Sinalização de rota de fuga',
+  'emergency-light': 'Iluminação de emergência',
+  eyewash: 'Primeiros socorros (químicos/baterias)',
 }
 
 export function getObjectDescription(key: ObjectTypeKey): string {

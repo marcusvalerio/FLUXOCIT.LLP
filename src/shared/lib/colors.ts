@@ -8,6 +8,7 @@ export const CATEGORY_COLORS: Record<ObjectCategory, string> = {
   equipment: '#2563EB',
   area: '#0D9488',
   flow: '#7C3AED',
+  safety: '#DC2626',
   other: '#64748B',
 }
 

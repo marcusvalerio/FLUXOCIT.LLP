@@ -20,6 +20,7 @@ import {
   RotateCw,
   Save,
   Sparkles,
+  SunMoon,
   Trash2,
   TriangleAlert,
   Undo2,
@@ -39,6 +40,7 @@ import { FlowCanvas, type FlowCanvasHandle } from './flow/FlowCanvas'
 import { FlowLibraryPanel } from './flow/FlowLibraryPanel'
 import { FlowPropertiesPanel } from './flow/FlowPropertiesPanel'
 import { Sim3DView } from './sim3d/Sim3DView'
+import { SafetyBadge } from './safety/SafetyBadge'
 import { useEditorStore } from './state/useEditorStore'
 import { getTool, toolForShortcut } from './tools/toolRegistry'
 import { layoutRepository } from '../../shared/data/repository'
@@ -47,6 +49,7 @@ import { Button } from '../../shared/ui/Button'
 import { IconButton } from '../../shared/ui/IconButton'
 import { SegmentedControl } from '../../shared/ui/SegmentedControl'
 import { ThemeToggle } from '../../shared/ui/ThemeToggle'
+import { useThemeStore, type ThemeMode } from '../../shared/state/useThemeStore'
 import { BottomSheet } from '../../shared/ui/BottomSheet'
 import { BrandMark } from '../../shared/ui/BrandMark'
 import { OBJECT_CATALOG } from './objects/catalog'
@@ -54,6 +57,9 @@ import type { ObjectTypeKey } from '../../types/layout'
 import type { FlowNodeType } from '../../types/flow'
 
 type Board = 'layout' | 'flow' | 'sim3d'
+const NEXT_THEME: Record<ThemeMode, ThemeMode> = { light: 'dark', dark: 'system', system: 'light' }
+const THEME_LABEL: Record<ThemeMode, string> = { light: 'Claro', dark: 'Escuro', system: 'Automático' }
+
 type SidePanelTab = 'properties' | 'environment' | 'metrics' | 'analysis'
 
 const BOARD_OPTIONS: { value: Board; label: string }[] = [
@@ -107,6 +113,8 @@ function PanelHeader({ title, children }: { title: string; children?: ReactNode 
 export function EditorPage() {
   const { layoutId } = useParams<{ layoutId: string }>()
   const navigate = useNavigate()
+  const theme = useThemeStore((s) => s.theme)
+  const setTheme = useThemeStore((s) => s.setTheme)
   const canvasHandleRef = useRef<EditorCanvasHandle | null>(null)
   const flowCanvasHandleRef = useRef<FlowCanvasHandle | null>(null)
   const [board, setBoard] = useState<Board>('layout')
@@ -452,6 +460,7 @@ export function EditorPage() {
           onChange={(next) => setBoard(next)}
           className="shrink-0"
         />
+        <SafetyBadge className="relative hidden sm:block" />
 
         {/* Ações */}
         <div className="flex min-w-0 flex-1 items-center justify-end gap-1 sm:gap-1.5">
@@ -466,13 +475,16 @@ export function EditorPage() {
               <span aria-hidden="true" className="mx-1 h-5 w-px bg-border" />
             </div>
           )}
-          <ThemeToggle />
+          {/* No celular o tema vai para o menu ⋮: o cabeçalho não comporta as três abas e o botão. */}
+          <span className="hidden sm:inline-flex">
+            <ThemeToggle />
+          </span>
           <Button variant="primary" size="sm" onClick={handleManualSave} className="shrink-0">
             {justSaved ? <Check size={16} className="animate-pop-in" /> : <Save size={16} />}
             <span className="hidden sm:inline">{justSaved ? 'Salvo' : 'Salvar'}</span>
           </Button>
 
-          <div className={`relative shrink-0 ${board === 'sim3d' ? 'hidden' : ''}`} data-editor-menu>
+          <div className={`relative shrink-0 ${board === 'sim3d' ? 'sm:hidden' : ''}`} data-editor-menu>
             <IconButton
               label="Mais ações"
               size="sm"
@@ -488,6 +500,17 @@ export function EditorPage() {
                 role="menu"
                 className="absolute right-0 top-full z-40 mt-1.5 w-60 origin-top-right rounded-xl border border-border bg-surface p-1.5 shadow-lg animate-panel-in"
               >
+                <button
+                  role="menuitem"
+                  className={`${menuItemClass} sm:hidden`}
+                  onClick={() => {
+                    setTheme(NEXT_THEME[theme])
+                  }}
+                >
+                  <SunMoon size={16} className="text-text-secondary" />
+                  Tema
+                  <span className="ml-auto text-[11px] text-text-disabled">{THEME_LABEL[theme]}</span>
+                </button>
                 {board !== 'sim3d' && (
                 <button
                   role="menuitem"
@@ -609,6 +632,8 @@ export function EditorPage() {
 
         {/* Prancheta */}
         <main className="relative min-h-0 min-w-0 flex-1">
+          {/* Selo de segurança no celular, onde o cabeçalho não tem espaço para ele */}
+          <SafetyBadge className="absolute right-2 top-2 z-30 sm:hidden" />
           {/* A troca de prancheta é uma mudança de contexto: um fade curto explica que a área
               inteira mudou, sem animar o conteúdo do canvas (que é Konva e caro de animar). */}
           <div key={board} className="absolute inset-0 animate-fade-in">

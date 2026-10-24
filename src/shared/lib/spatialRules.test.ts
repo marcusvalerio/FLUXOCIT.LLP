@@ -121,7 +121,7 @@ describe('getBoundsStatus', () => {
 describe('getRecommendedCorridorWidthCm', () => {
   it('returns the reference width for a known corridor type', () => {
     expect(getRecommendedCorridorWidthCm('forklift')).toBe(320)
-    expect(getRecommendedCorridorWidthCm('pedestrian')).toBe(90)
+    expect(getRecommendedCorridorWidthCm('pedestrian')).toBe(120)
   })
 
   it('falls back to a generic figure for an unset/unrecognized type', () => {
@@ -174,10 +174,22 @@ describe('findNarrowCorridors', () => {
       objectType: 'corridor',
       category: 'storage',
       width: 300,
-      length: 90,
+      length: 120,
       properties: { corridorType: 'pedestrian' },
     })
     expect(findNarrowCorridors([corridor])).toEqual([])
+  })
+
+  it('flags a pedestrian route under 1,20 m (NR-12, 12.2.1)', () => {
+    const corridor = makeObject({
+      id: 'c',
+      objectType: 'corridor',
+      category: 'storage',
+      width: 300,
+      length: 100,
+      properties: { corridorType: 'pedestrian' },
+    })
+    expect(findNarrowCorridors([corridor]).map((v) => v.code)).toEqual(['corridor-narrow'])
   })
 })
 
