@@ -73,7 +73,12 @@ export function LayoutsListPage() {
   async function handleCreateDemo() {
     setCreatingDemo(true)
     try {
-      const layout = await layoutRepository.createLayout({ name: DEMO_PROJECT.name, widthM: DEMO_PROJECT.widthM, heightM: DEMO_PROJECT.heightM })
+      const layout = await layoutRepository.createLayout({
+        name: DEMO_PROJECT.name,
+        description: DEMO_PROJECT.description,
+        widthM: DEMO_PROJECT.widthM,
+        heightM: DEMO_PROJECT.heightM,
+      })
       await layoutRepository.saveLayoutObjects(layout.id, buildDemoObjects())
       const { flowNodes, flowConnections } = buildDemoFlow()
       await layoutRepository.saveFlowBoard(layout.id, flowNodes, flowConnections)
