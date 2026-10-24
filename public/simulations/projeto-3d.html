@@ -76,6 +76,7 @@
     <button id="t-usd" title="Modelos 3D realistas da NVIDIA (SimReady)">Modelos NVIDIA</button>
   </div>
   <div id="i-usd" class="credit"></div>
+  <div id="i-quality" class="credit"></div>
 </aside>
 <div id="alert"></div>
 <div id="editbar">
@@ -128,7 +129,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 
 const STORAGE_KEY = 'argus:3d-project'
-const ROOF_H = 9
+let ROOF_H = 9   // galpões grandes ganham pé-direito maior (ver build)
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v))
 const wrap = (a) => ((((a + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) - Math.PI
 const angDiff = (a, b) => wrap(a - b)
@@ -145,15 +146,15 @@ const PALLET_COLORS = ['#c8a97e', '#b98f5c', '#d6c29a', '#a77b4f', '#9fb7c9', '#
 
 // ---------------------------------------------------------------- renderer / cena
 const renderer = new THREE.WebGLRenderer({ antialias: true })
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight)
-renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5)); renderer.setSize(innerWidth, innerHeight)
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05
 document.getElementById('app').appendChild(renderer.domElement)
 const labelRenderer = new CSS2DRenderer({ element: document.getElementById('labels') })
 labelRenderer.setSize(innerWidth, innerHeight)
 const scene = new THREE.Scene()
 scene.background = new THREE.Color('#a9bccf')
-const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.05, 1000)
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.15, 1500)
 const controls = new OrbitControls(camera, renderer.domElement)
 controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.49
 scene.add(new THREE.HemisphereLight('#ffffff', '#6b7280', 1.6))
@@ -166,6 +167,14 @@ const ground = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), new THREE.Mes
 ground.rotation.x = -Math.PI / 2; ground.position.y = -0.02; ground.receiveShadow = true; scene.add(ground)
 
 const M = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.8, ...o })
+const cladMat = (() => {
+  const c = document.createElement('canvas'); c.width = 64; c.height = 4
+  const g = c.getContext('2d'), grad = g.createLinearGradient(0, 0, 64, 0)
+  grad.addColorStop(0, '#d9dde3'); grad.addColorStop(0.35, '#f1f3f6'); grad.addColorStop(0.5, '#c7ccd4'); grad.addColorStop(0.65, '#e9ecf0'); grad.addColorStop(1, '#d9dde3')
+  g.fillStyle = grad; g.fillRect(0, 0, 64, 4)
+  const t = new THREE.CanvasTexture(c); t.wrapS = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace
+  return new THREE.MeshStandardMaterial({ map: t, roughness: 0.55, metalness: 0.2 })
+})()
 let root = new THREE.Group(); scene.add(root)
 let W = 40, D = 30
 let obstacles = []   // OBB: { cx, cz, hw, hl, c, s }
@@ -183,13 +192,14 @@ let boxes = []
 let pallets = [], slots = [], palletInst = null, carrying = null
 function toWorld(f, x, z) { return { x: f.cx + x * Math.cos(f.th) + z * Math.sin(f.th), z: f.cz - x * Math.sin(f.th) + z * Math.cos(f.th) } }
 function addSlot(f, x, y, z) { const w = toWorld(f, x, z); const sl = { x: w.x, y, z: w.z, rot: f.th, pallet: null }; slots.push(sl); return sl }
-function addPallet(f, x, y, z, w, d, lh, color, slot = null) {
+function addPallet(f, x, y, z, w, d, lh, color, slot = null, kind = 'box') {
   const p = toWorld(f, x, z)
-  const pl = { x: p.x, y, z: p.z, rot: f.th, w, d, lh, color, slot, mesh: null, idx: pallets.length }
+  const pl = { x: p.x, y, z: p.z, rot: f.th, w, d, lh, color, slot, mesh: null, idx: pallets.length, kind: LOAD_GEO[kind] ? kind : 'box' }
   if (slot) slot.pallet = pl
   pallets.push(pl); return pl
 }
 const _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3(), _c = new THREE.Color()
+const ZERO = new THREE.Matrix4().makeScale(0, 0, 0)
 function objFrame(o) {
   const w = o.width / 100, l = o.length / 100
   const th = -THREE.MathUtils.degToRad(o.rotationDeg || 0)
@@ -206,18 +216,62 @@ function flushBoxes() {
   im.count = boxes.length; im.castShadow = im.receiveShadow = true
   root.add(im)
 }
-const woodMat = M('#8B5E34', { roughness: 0.9 })
+const stripeTex = (draw) => { const c = document.createElement('canvas'); c.width = c.height = 64; draw(c.getContext('2d')); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t }
+const woodMat = new THREE.MeshStandardMaterial({ roughness: 0.9, map: stripeTex((g) => {   // tábuas
+  g.fillStyle = '#8B5E34'; g.fillRect(0, 0, 64, 64); g.fillStyle = '#6b4423'
+  for (let k = 0; k < 7; k++) g.fillRect(k * 9.1 + 7, 0, 2, 64)
+}) })
 // Pallet de madeira com tábuas, tacos e longarinas, numa caixa unitária (-0,5..0,5) para poder
 // ser escalado por instância como a caixa simples era.
 const palletGeo = (() => {
   const parts = []
   const add = (x, y, z, sx, sy, sz) => parts.push(new THREE.BoxGeometry(sx, sy, sz).translate(x, y, z))
-  for (const x of [-0.45, 0, 0.45]) add(x, -0.43, 0, 0.12, 0.14, 1)                         // tábuas de fundo
-  for (const x of [-0.45, 0, 0.45]) for (const z of [-0.43, 0, 0.43]) add(x, -0.09, z, 0.12, 0.55, 0.14)   // tacos
-  for (const z of [-0.43, 0, 0.43]) add(0, 0.25, z, 1, 0.16, 0.14)                          // travessas
-  for (let k = 0; k < 7; k++) add(-0.45 + k * 0.15, 0.42, 0, 0.11, 0.16, 1)                 // tábuas do tampo
+  // poucas peças: são milhares de pallets no galpão (o detalhe das tábuas vem da textura)
+  for (const x of [-0.45, 0, 0.45]) add(x, -0.16, 0, 0.12, 0.68, 1)                          // longarinas com tacos
+  add(0, 0.42, 0, 1, 0.16, 1)                                                                 // tampo
+  for (const z of [-0.43, 0.43]) add(0, -0.43, z, 1, 0.14, 0.14)                              // tábuas de fundo
   return mergeGeometries(parts)
 })()
+// Cargas paletizadas (propriedade "load" de porta-paletes, blocados e pallets): caixas comuns,
+// fardos de bebida em camadas (filme stretch), barris e engradados de vasilhame. Todas numa caixa
+// unitária, escaladas por instância como a carga simples.
+const unitParts = (fn) => { const parts = []; fn((g, x, y, z) => parts.push(g.translate(x, y, z))); return mergeGeometries(parts) }
+const LOAD_GEO = {
+  box: unitBox,
+  beverage: unitBox,   // fardos em camadas: desenhados pela textura (uma caixa só por pallet)
+  kegs: unitParts((add) => {       // 2 camadas de 2 × 3 barris
+    for (let l = 0; l < 2; l++) for (let i = 0; i < 2; i++) for (let j = 0; j < 3; j++) {
+      const x = -0.5 + (i + 0.5) / 2, y = -0.5 + (l + 0.5) / 2, z = -0.5 + (j + 0.5) / 3
+      add(new THREE.CylinderGeometry(0.155, 0.155, 0.46, 10, 1), x, y, z)
+      add(new THREE.CylinderGeometry(0.165, 0.165, 0.03, 10, 1, true), x, y + 0.17, z)   // aro
+    }
+  }),
+  crates: unitBox,     // engradados empilhados: idem
+}
+// Texturas cinza-claras (a cor de cada pallet vem da instância): grade de fardos com o brilho do
+// filme stretch e pilha de engradados com as alças vazadas.
+const packTex = stripeTex((g) => {
+  g.fillStyle = '#f2f2f2'; g.fillRect(0, 0, 64, 64)
+  g.fillStyle = '#9a9a9a'; for (let k = 1; k < 4; k++) { g.fillRect(0, k * 16 - 1, 64, 2); g.fillRect(k * 16 - 1, 0, 2, 64) }
+  g.fillStyle = 'rgba(255,255,255,0.55)'; for (let k = 0; k < 4; k++) g.fillRect(0, k * 16 + 3, 64, 2)
+})
+const crateTex = stripeTex((g) => {
+  g.fillStyle = '#e8e8e8'; g.fillRect(0, 0, 64, 64)
+  g.fillStyle = '#7a7a7a'; for (let k = 1; k < 5; k++) g.fillRect(0, k * 12.8 - 1, 64, 2); g.fillRect(31, 0, 2, 64)
+  g.fillStyle = '#4a4a4a'; for (let k = 0; k < 5; k++) for (const x of [10, 42]) g.fillRect(x, k * 12.8 + 3, 12, 3)
+})
+const LOAD_MAT = {
+  box: () => M('#ffffff', { roughness: 0.75 }),
+  beverage: () => new THREE.MeshStandardMaterial({ roughness: 0.3, metalness: 0.1, map: packTex }),   // filme stretch brilhante
+  kegs: () => M('#ffffff', { roughness: 0.25, metalness: 0.75 }),
+  crates: () => new THREE.MeshStandardMaterial({ roughness: 0.6, map: crateTex }),
+}
+const LOAD_COLORS = {
+  beverage: ['#b45309', '#d4d4d8', '#065f46', '#1e3a8a', '#92400e', '#e5e7eb'],
+  kegs: ['#c0c4cc', '#a1a1aa'],
+  crates: ['#b91c1c', '#15803d', '#ca8a04', '#1d4ed8'],
+}
+const loadColor = (kind, r) => (LOAD_COLORS[kind] ? LOAD_COLORS[kind][Math.floor(r * LOAD_COLORS[kind].length)] : PALLET_COLORS[Math.floor(r * PALLET_COLORS.length)])
 function palletMatrices(p, base, load) {
   _q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), p.rot)
   base.compose(_p.set(p.x, p.y + 0.07, p.z), _q, _s.set(p.w, 0.14, p.d))
@@ -234,8 +288,11 @@ const USD_MODELS = {
 const USD_KEY = 'argus:usd-models'
 const usdModels = {}           // tipo → { template, bb } (só os que carregaram)
 let usdState = 'off'           // off | loading | ready
-let usdEnabled = true
-try { usdEnabled = localStorage.getItem(USD_KEY) !== 'off' } catch { /* sem armazenamento: padrão ligado */ }
+// Desligado por padrão: os pacotes da NVIDIA são pesados (texturas grandes) e dependem do Hugging Face.
+let usdEnabled = false
+try { usdEnabled = localStorage.getItem(USD_KEY) === 'on' } catch { /* sem armazenamento: padrão desligado */ }
+const USD_TIMEOUT_MS = 25000
+let usdError = ''
 const usdModel = (type) => (usdEnabled ? usdModels[type] : null)
 // Matriz que encaixa o modelo na caixa do objeto: base no piso, centralizado, girado 90° se o
 // lado comprido do modelo estiver no eixo errado; h = null mantém a proporção da altura.
@@ -268,13 +325,21 @@ async function loadUsdModels() {
   try { lib = await import('../vendor/usd-web-viewer/esm/index.js') } catch (e) { console.warn('Leitor USD indisponível', e); usdState = 'ready'; usdStatus(); return }
   await Promise.all(Object.entries(USD_MODELS).map(async ([type, path]) => {
     try {
-      const { root: r, complete } = await lib.loadUsd(USD_BASE + path, { textures: 'preview', maxTextureSize: 512 })
-      await complete.catch(() => {})
+      // Só a geometria entra na espera (com tempo-limite); as texturas, pequenas, chegam depois
+      // sem travar nada.
+      const ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), USD_TIMEOUT_MS)
+      let r
+      try {
+        ({ root: r } = await lib.loadUsd(USD_BASE + path, { textures: 'preview', maxTextureSize: 256, maxTextureBytes: 32 * 2 ** 20, maxLayerBytes: 64 * 2 ** 20, signal: ctrl.signal }))
+      } finally { clearTimeout(timer) }
       r.updateMatrixWorld(true)
       const bb = new THREE.Box3().setFromObject(r)
       if (bb.isEmpty()) throw new Error('modelo vazio')
       usdModels[type] = { template: r, bb }
-    } catch (e) { console.warn(`Modelo USD de "${type}" não carregou; usando o modelo próprio`, e) }
+    } catch (e) {
+      usdError = e?.code === 'aborted' ? 'tempo esgotado' : e?.code === 'fetch' ? 'falha ao baixar do Hugging Face' : 'arquivo não pôde ser lido'
+      console.warn(`Modelo USD de "${type}" não carregou; usando o modelo próprio`, e)
+    }
   }))
   usdState = 'ready'; usdStatus()
   if (project && Object.keys(usdModels).length) build(project)
@@ -285,20 +350,28 @@ function usdStatus() {
   const names = { pallet: 'pallet', box: 'caixa' }
   const ok = Object.keys(usdModels).map((t) => names[t] || t)
   const credit = 'Modelos 3D: <a href="https://huggingface.co/datasets/nvidia/PhysicalAI-SimReady-Warehouse-01" target="_blank" rel="noopener">NVIDIA SimReady Warehouse</a> (CC BY 4.0)'
-  el.innerHTML = !usdEnabled ? 'Modelos NVIDIA desligados — usando os modelos próprios.'
+  el.innerHTML = !usdEnabled ? 'Modelos NVIDIA (beta) desligados — usando os modelos próprios.'
     : usdState === 'loading' ? 'Carregando modelos NVIDIA…'
     : ok.length ? `Modelos NVIDIA ativos: ${ok.join(', ')}.<br>${credit}`
-    : usdState === 'ready' ? 'Modelos NVIDIA indisponíveis — usando os modelos próprios.' : ''
+    : usdState === 'ready' ? `Modelos NVIDIA não carregaram${usdError ? ` (${usdError})` : ''} — usando os modelos próprios.` : 'Modelos NVIDIA desligados. Ligue para testar (beta, mais pesado).'
 }
 
 function buildPallets() {
   const n = Math.max(1, pallets.length)
-  const base = new THREE.InstancedMesh(palletGeo, woodMat, n), load = new THREE.InstancedMesh(unitBox, M('#ffffff', { roughness: 0.75 }), n)
+  const base = new THREE.InstancedMesh(palletGeo, woodMat, n)
+  // uma malha instanciada por tipo de carga, só com os pallets daquele tipo (instâncias "vazias"
+  // continuariam passando pela placa de vídeo)
+  const byKind = {}
+  for (const p of pallets) { (byKind[p.kind] ||= []).push(p); p.kidx = byKind[p.kind].length - 1 }
+  const loads = Object.fromEntries(Object.entries(byKind).map(([k, list]) => [k, new THREE.InstancedMesh(LOAD_GEO[k], LOAD_MAT[k](), list.length)]))
   const mb = new THREE.Matrix4(), ml = new THREE.Matrix4()
-  pallets.forEach((p, i) => { palletMatrices(p, mb, ml); base.setMatrixAt(i, mb); load.setMatrixAt(i, ml); load.setColorAt(i, _c.set(p.color)) })
-  base.count = load.count = pallets.length
-  for (const im of [base, load]) { im.castShadow = im.receiveShadow = true; root.add(im) }
-  palletInst = { base, load, extra: [] }
+  pallets.forEach((p, i) => {
+    palletMatrices(p, mb, ml); base.setMatrixAt(i, mb)
+    loads[p.kind].setMatrixAt(p.kidx, ml); loads[p.kind].setColorAt(p.kidx, _c.set(p.color))
+  })
+  base.count = pallets.length
+  for (const im of [base, ...Object.values(loads)]) { im.castShadow = im.receiveShadow = true; root.add(im) }
+  palletInst = { base, loads, extra: [] }
   const model = usdModel('pallet')
   if (model) {   // troca a base própria pelas malhas do modelo, instanciadas do mesmo jeito
     base.visible = false
@@ -316,16 +389,21 @@ function setExtra(p, i, hidden) {
   const world = hidden ? null : new THREE.Matrix4().compose(_p.set(p.x, p.y, p.z), _q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), p.rot), _s.set(1, 1, 1)).multiply(palletFit(p))
   for (const e of palletInst.extra) { e.im.setMatrixAt(i, hidden ? ZERO : world.clone().multiply(e.local)); e.im.instanceMatrix.needsUpdate = true }
 }
-const ZERO = new THREE.Matrix4().makeScale(0, 0, 0)
-function hideInstance(p) { palletInst.base.setMatrixAt(p.idx, ZERO); palletInst.load.setMatrixAt(p.idx, ZERO); palletInst.base.instanceMatrix.needsUpdate = palletInst.load.instanceMatrix.needsUpdate = true; setExtra(p, p.idx, true) }
+function hideInstance(p) {
+  const ld = palletInst.loads[p.kind]
+  palletInst.base.setMatrixAt(p.idx, ZERO); ld.setMatrixAt(p.kidx, ZERO); palletInst.base.instanceMatrix.needsUpdate = ld.instanceMatrix.needsUpdate = true
+  setExtra(p, p.idx, true)
+}
 function showInstance(p) {
   const mb = new THREE.Matrix4(), ml = new THREE.Matrix4(); palletMatrices(p, mb, ml)
-  palletInst.base.setMatrixAt(p.idx, mb); palletInst.load.setMatrixAt(p.idx, ml); palletInst.base.instanceMatrix.needsUpdate = palletInst.load.instanceMatrix.needsUpdate = true
+  const ld = palletInst.loads[p.kind]
+  palletInst.base.setMatrixAt(p.idx, mb); ld.setMatrixAt(p.kidx, ml); palletInst.base.instanceMatrix.needsUpdate = ld.instanceMatrix.needsUpdate = true
   setExtra(p, p.idx, false)
 }
 function palletMesh(p) {   // origem no centro da base, profundidade ao longo de z local
   const g = new THREE.Group()
-  const l = new THREE.Mesh(unitBox, M(p.color, { roughness: 0.75 })); l.scale.set(p.w - 0.05, p.lh, p.d - 0.1); l.position.y = 0.14 + p.lh / 2
+  const mat = LOAD_MAT[p.kind](); mat.color.set(p.color)
+  const l = new THREE.Mesh(LOAD_GEO[p.kind], mat); l.scale.set(p.w - 0.05, p.lh, p.d - 0.1); l.position.y = 0.14 + p.lh / 2
   l.castShadow = true; g.add(l)
   if (usdModel('pallet')) g.add(modelInstance(usdModel('pallet'), palletFit(p)))
   else { const b = new THREE.Mesh(palletGeo, woodMat); b.scale.set(p.w, 0.14, p.d); b.position.y = 0.07; b.castShadow = true; g.add(b) }
@@ -336,8 +414,11 @@ function label(text, color, x, y, z) {
   const el = document.createElement('div'); el.className = 'lbl'; el.textContent = text; el.style.background = color
   const o = new CSS2DObject(el); o.position.set(x, y, z); root.add(o)
 }
+// Marcações de piso: polygonOffset as desenha sempre por cima do piso, sem "briga" de profundidade
+// (era o que fazia áreas e faixas piscarem com a câmera longe).
+const decal = (m) => Object.assign(m, { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })
 function floorPlane(f, color, opacity, y = 0.012) {
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(f.w, f.l), new THREE.MeshStandardMaterial({ color, transparent: true, opacity, depthWrite: false }))
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(f.w, f.l), decal(new THREE.MeshStandardMaterial({ color, transparent: true, opacity, depthWrite: false })))
   m.rotation.set(-Math.PI / 2, f.th, 0, 'YXZ')
   m.position.set(f.cx, y, f.cz); m.receiveShadow = true; root.add(m)
   const e = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(f.w, f.l)), new THREE.LineBasicMaterial({ color }))
@@ -365,10 +446,11 @@ function rackLike(o, f, kind) {
       const x = bx - bayLen / 2 + slotW * (k + 0.5), y = lv * levelH
       const pw = Math.min(1.0, slotW - 0.15), pd = Math.min(1.2, f.l - 0.1)
       const slot = shelf ? null : addSlot(f, x, y, 0)
-      const occupied = R() <= 0.72, col = PALLET_COLORS[Math.floor(R() * PALLET_COLORS.length)], lh = Math.min(1.0 + R() * 0.2, levelH - 0.35)
+      const loadKind = o.properties?.load || 'box'
+      const occupied = R() <= (+o.properties?.fill || 0.72), col = loadColor(loadKind, R()), lh = Math.min(loadKind === 'kegs' ? 1.2 : 1.0 + R() * 0.2, levelH - 0.35)
       if (!occupied) continue
       if (shelf) { B(f, x, y + 0.05, 0, pw * 0.8, 0.35, pd * 0.7, col); continue }
-      addPallet(f, x, y, 0, pw, pd, lh, kind === 'cantilever' ? '#78716c' : col, slot)
+      addPallet(f, x, y, 0, pw, pd, lh, kind === 'cantilever' ? '#78716c' : col, slot, loadKind)
     }
   }
   obstacle(f)
@@ -508,6 +590,25 @@ function dock(f0, o) {
   B(f, 0, 3.0, 0, L + 0.5, 0.35, 0.3, '#18181b')                                  // vedação superior
   B(f, L / 2 + 0.35, 1.6, 0, 0.12, 0.3, 0.12, DARK); B(f, L / 2 + 0.35, 1.78, 0.065, 0.06, 0.06, 0.01, '#22c55e')   // semáforo
   label(o.name || 'Doca', '#2563EB', f0.cx, 3.6, f0.cz)
+  // Doca na parede do galpão: carreta sider (lona lateral) encostada do lado de fora
+  const out = f0.cz > D - 1 ? [0, 1] : f0.cz < 1 ? [0, -1] : f0.cx > W - 1 ? [1, 0] : f0.cx < 1 ? [-1, 0] : null
+  if (out && o.properties?.truck !== false) sideTruck(f0.cx, f0.cz, out, hash(o.id))
+}
+const TRUCK_STRIPES = ['#1d4ed8', '#b91c1c', '#047857', '#ca8a04']
+function sideTruck(x, z, [ox, oz], seed) {
+  // no mesmo lote instanciado do cenário (nenhuma chamada de desenho a mais por carreta)
+  const th = Math.atan2(ox, oz), stripe = TRUCK_STRIPES[seed % TRUCK_STRIPES.length]
+  const f = { m: new THREE.Matrix4().compose(_p.set(x + ox * 0.15, 0, z + oz * 0.15), _q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), th), _s.set(1, 1, 1)) }
+  B(f, 0, 1.0, 6.9, 2.5, 0.25, 13.6, '#27272a')                                    // chassi
+  B(f, 0, 1.25, 6.9, 2.5, 2.7, 13.6, '#e5e7eb')                                    // lona (sider)
+  for (const sx of [-1.255, 1.255]) {
+    B(f, sx, 2.6, 6.9, 0.01, 0.5, 13.6, stripe)                                    // faixa colorida na lona
+    for (let k = 0; k < 9; k++) B(f, sx, 1.25, 0.4 + k * 1.6, 0.02, 2.7, 0.06, '#9ca3af')   // fueiros
+  }
+  B(f, 0, 3.95, 6.9, 2.5, 0.1, 13.6, '#9ca3af')                                    // teto
+  B(f, 0, 0.9, 15.2, 2.5, 2.6, 2.3, '#f8fafc')                                     // cavalo (cabine)
+  B(f, 0, 2.3, 16.36, 2.3, 0.9, 0.05, '#0f172a')                                   // para-brisa
+  for (const zz of [10.5, 11.8, 13.1, 14.6, 15.9]) for (const sx of [-1.1, 1.1]) B(f, sx, 0, zz, 0.35, 1.0, 1.0, '#111827')   // rodas
 }
 function doorOrGate(f0, t) {
   const f = longFrame(f0), span = f.w, depth = Math.max(f.l, 0.12)
@@ -585,7 +686,7 @@ function wallModel(f0, o) {
 const glow = (color) => new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.9 })
 function safetyItem(f, t) {
   if (t === 'fire-extinguisher') {
-    B(f, 0, 0, 0, f.w, 0.005, f.l, YELLOW); B(f, 0, 0.005, 0, f.w - 0.1, 0.005, f.l - 0.1, '#dc2626')   // demarcação vermelha com borda amarela
+    B(f, 0, 0, 0, f.w, 0.012, f.l, YELLOW); B(f, 0, 0.012, 0, f.w - 0.1, 0.008, f.l - 0.1, '#dc2626')   // demarcação vermelha com borda amarela
     B(f, 0, 0.01, 0, 0.3, 0.02, 0.3, '#1f2937')                                                       // suporte de piso
     B(f, 0, 0.03, 0, 0.18, 0.55, 0.18, '#dc2626'); B(f, 0, 0.58, 0, 0.08, 0.08, 0.08, DARK)            // cilindro e válvula
     B(f, 0.06, 0.6, 0, 0.12, 0.02, 0.03, DARK); B(f, -0.09, 0.2, 0, 0.02, 0.4, 0.02, DARK)              // gatilho e mangueira
@@ -614,7 +715,7 @@ function safetyItem(f, t) {
     return
   }
   // lava-olhos / chuveiro de emergência
-  B(f, 0, 0, 0, f.w, 0.005, f.l, '#16a34a')
+  B(f, 0, 0, 0, f.w, 0.012, f.l, '#16a34a')
   B(f, 0, 0, 0, 0.06, 2.3, 0.06, '#16a34a'); B(f, 0, 2.25, 0.2, 0.06, 0.06, 0.4, '#16a34a'); B(f, 0, 2.15, 0.4, 0.3, 0.06, 0.3, YELLOW)   // chuveiro
   B(f, 0, 1.0, 0.18, 0.3, 0.06, 0.25, YELLOW); B(f, 0, 0.6, 0.12, 0.04, 0.4, 0.04, '#16a34a')          // bacia do lava-olhos
   B(f, 0, 1.6, -0.03, 0.3, 0.3, 0.01, '#16a34a')                                                       // placa
@@ -627,7 +728,7 @@ function objHeight(o, f) {
   if (FLAT.has(t)) return 0.05
   if (['rack', 'drive-in', 'push-back', 'flow-rack', 'cantilever'].includes(t)) return clamp(+o.properties?.levels || 3, 1, 10) * 1.55 + 0.4
   if (t === 'shelf') return clamp(+o.properties?.levels || 3, 1, 10) * 0.5 + 0.1
-  if (t === 'storage-block') return clamp(+o.properties?.levels || 3, 1, 6) * 1.16
+  if (t === 'storage-block') return clamp(+o.properties?.levels || 3, 1, 6) * (o.properties?.load === 'kegs' ? 1.36 : 1.16)
   return { wall: +o.properties?.height || 6, column: ROOF_H, gate: 4.5, door: 2.4, stairs: 1.8, container: 2.6, forklift: 2.6, 'reach-truck': 4, 'fire-extinguisher': 1.8, 'fire-hydrant': 1.7, 'emergency-exit': 2.6, 'emergency-light': 2.55, eyewash: 2.4, 'order-picker': 2.6, tug: 1.1 }[t] ?? 1.2
 }
 function vehicle(f, color, kind) {
@@ -641,6 +742,7 @@ function build(project) {
   document.querySelectorAll('#labels .lbl').forEach((el) => el.remove())
   boxes = []; obstacles = []; agents = []; conveyorItems = []; pallets = []; slots = []; carrying = null; user.load = null; stats = { objects: 0, positions: 0, routes: 0, unlinked: 0 }
   W = Math.max(1, project.widthM || 40); D = Math.max(1, project.heightM || 30)
+  ROOF_H = W * D > 2500 ? 12 : 9
   const objects = project.objects || []
   stats.objects = objects.length
 
@@ -648,12 +750,17 @@ function build(project) {
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), M('#d6d3cd'))
   floor.rotation.x = -Math.PI / 2; floor.position.set(W / 2, 0, D / 2); floor.receiveShadow = true; root.add(floor)
   const pts = []
-  for (let x = 0; x <= W + 1e-6; x += 1) pts.push(x, 0.004, 0, x, 0.004, D)
-  for (let z = 0; z <= D + 1e-6; z += 1) pts.push(0, 0.004, z, W, 0.004, z)
+  const gstep = W * D > 2500 ? 2 : 1
+  for (let x = 0; x <= W + 1e-6; x += gstep) pts.push(x, 0.004, 0, x, 0.004, D)
+  for (let z = 0; z <= D + 1e-6; z += gstep) pts.push(0, 0.004, z, W, 0.004, z)
   const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3))
   root.add(new THREE.LineSegments(gg, new THREE.LineBasicMaterial({ color: '#c4bfb5' })))
   for (const [len, rot, x, z] of [[W, 0, W / 2, 0], [W, Math.PI, W / 2, D], [D, Math.PI / 2, 0, D / 2], [D, -Math.PI / 2, W, D / 2]]) {
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(len, ROOF_H), M('#e5e7eb')); m.rotation.y = rot; m.position.set(x, ROOF_H / 2, z); m.receiveShadow = true; root.add(m)
+    // telha metálica trapezoidal (textura repetida a cada ~1 m) sobre faixa de concreto de 1,5 m
+    const geo = new THREE.PlaneGeometry(len, ROOF_H - 1.5), uv = geo.attributes.uv
+    for (let i = 0; i < uv.count; i++) uv.setX(i, uv.getX(i) * len)
+    const m = new THREE.Mesh(geo, cladMat); m.rotation.y = rot; m.position.set(x, 1.5 + (ROOF_H - 1.5) / 2, z); m.receiveShadow = true; root.add(m)
+    const base = new THREE.Mesh(new THREE.PlaneGeometry(len, 1.5), M('#a8a29e')); base.rotation.y = rot; base.position.set(x, 0.75, z); root.add(base)
   }
   roof = new THREE.Mesh(new THREE.PlaneGeometry(W, D), M('#9ca3af')); roof.rotation.x = Math.PI / 2; roof.position.set(W / 2, ROOF_H, D / 2)
   roof.visible = document.getElementById('t-roof').classList.contains('on'); root.add(roof)
@@ -674,11 +781,14 @@ function build(project) {
       case 'storage-block': {
         const R = rng(hash(o.id)), nx = Math.max(1, Math.floor(f.w / 1.1)), nz = Math.max(1, Math.floor(f.l / 1.3)), lv = clamp(+o.properties?.levels || 3, 1, 6)
         for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
-          const h = 1 + Math.floor(R() * lv); stats.positions += lv
+          // blocado de bebidas costuma estar quase cheio: altura da pilha entre lv-1 e lv
+          const fill = +o.properties?.fill || 0.5
+          const h = R() < fill ? lv - (R() < 0.3 ? 1 : 0) : 1 + Math.floor(R() * lv); stats.positions += lv
           const x = -f.w / 2 + (i + 0.5) * f.w / nx, z = -f.l / 2 + (j + 0.5) * f.l / nz
+          const lh = o.properties?.load === 'kegs' ? 1.2 : 1.0, step = lh + 0.16
           for (let k = 0; k < lv; k++) {
-            const slot = addSlot(f, x, k * 1.16, z)
-            if (k < h) addPallet(f, x, k * 1.16, z, 1.0, 1.2, 1.0, PALLET_COLORS[(i + j + k) % PALLET_COLORS.length], slot)
+            const slot = addSlot(f, x, k * step, z)
+            if (k < h) addPallet(f, x, k * step, z, 1.0, 1.2, lh, loadColor(o.properties?.load, R()), slot, o.properties?.load)
           }
         }
         obstacle(f); break
@@ -686,7 +796,7 @@ function build(project) {
       case 'pallet': case 'box': case 'container': case 'cage-pallet': {
         const h = t === 'container' ? 2.6 : t === 'box' ? Math.min(f.w, f.l) : 1.1
         // pallet solto: pode ser pego, então não vira obstáculo (o garfo precisa entrar nele)
-        if (t === 'pallet') { addPallet(f, 0, 0, 0, Math.min(f.w, 1.2), Math.min(f.l, 1.2), 1.0, PALLET_COLORS[hash(o.id) % PALLET_COLORS.length]); break }
+        if (t === 'pallet') { addPallet(f, 0, 0, 0, Math.min(f.w, 1.2), Math.min(f.l, 1.2), 1.0, loadColor(o.properties?.load, (hash(o.id) % 97) / 97), null, o.properties?.load); break }
         if (t === 'container') container(f, o)
         else if (t === 'cage-pallet') cagePallet(f, o)
         else if (usdModel('box')) {
@@ -770,12 +880,13 @@ function buildGrid() {
     grid[j * GW + i] = obstacles.some((b) => insideOBB(x, z, b, 0.45)) ? 1 : 0
   }
 }
-function nearestFree(x, z) {
+function nearestFree(x, z, avoid = null) {
   const ci = clamp(Math.floor(x / CELL), 0, GW - 1), cj = clamp(Math.floor(z / CELL), 0, GD - 1)
   for (let r = 0; r < Math.max(GW, GD); r++) {
     let best = null, bd = Infinity
     for (let j = cj - r; j <= cj + r; j++) for (let i = ci - r; i <= ci + r; i++) {
       if (i < 0 || j < 0 || i >= GW || j >= GD || grid[j * GW + i]) continue
+      if (avoid && avoid(i, j)) continue
       const d = Math.hypot(i - ci, j - cj); if (d < bd) { bd = d; best = [i, j] }
     }
     if (best) return best
@@ -854,11 +965,19 @@ function makeLoad() { const g = new THREE.Group(); g.add(box(1.0, 0.14, 1.2, M('
 function buildAgents(project, objects) {
   const byId = new Map(objects.map((o) => [o.id, o]))
   const nodes = new Map((project.flowNodes || []).map((n) => [n.id, n]))
+  const usedEnds = []
   for (const c of project.flowConnections || []) {
     const a = byId.get(nodes.get(c.fromNodeId)?.linkedObjectId), b = byId.get(nodes.get(c.toNodeId)?.linkedObjectId)
     if (!a || !b) { stats.unlinked++; continue }
     const fa = objFrame(a), fb = objFrame(b)
-    const path = astar({ x: fa.cx, z: fa.cz }, { x: fb.cx, z: fb.cz })
+    // pontas de rota exclusivas: duas rotas que saem/chegam no mesmo objeto param em pontos a
+    // pelo menos 2,5 m um do outro, em vez de um veículo em cima do outro
+    const end = (f) => {
+      const c = nearestFree(f.cx, f.cz, (i, j) => usedEnds.some(([ui, uj]) => Math.hypot(ui - i, uj - j) * CELL < 2.5))
+      if (!c) return { x: f.cx, z: f.cz }
+      usedEnds.push(c); return { x: (c[0] + 0.5) * CELL, z: (c[1] + 0.5) * CELL }
+    }
+    const path = astar(end(fa), end(fb))
     if (!path || path.length < 2) continue
     const machine = c.flowType === 'pallet' || c.flowType === 'forklift'
     const color = { material: '#334155', pallet: '#8B5E34', people: '#0D9488', forklift: '#2563EB', picking: '#7C3AED' }[c.flowType] || '#334155'
@@ -869,28 +988,66 @@ function buildAgents(project, objects) {
     root.add(model.g)
     const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(path.map((p) => new THREE.Vector3(p.x, 0.03, p.z))), new THREE.LineDashedMaterial({ color, dashSize: 0.6, gapSize: 0.4 }))
     line.computeLineDistances(); root.add(line)
-    agents.push({ ...model, path, seg: 1, dir: 1, x: path[0].x, z: path[0].z, th: 0, v: 0, wait: 1 + agents.length, load, machine,
+    agents.push({ ...model, path, lanes: [lanePath(path), lanePath([...path].reverse())], idx: agents.length, seg: 1, dir: 1, x: path[0].x, z: path[0].z, th: 0, v: 0, wait: 1 + agents.length, load, machine,
       speed: machine ? 2.2 : 1.3, label: c.label || '' })
     stats.routes++
   }
 }
+// Mão de direção: cada sentido da rota anda deslocado para a direita (como no trânsito), então
+// quem vai e quem volta passa lado a lado em vez de um por cima do outro. As pontas (onde a
+// carga é pega/entregue) ficam no eixo.
+const LANE = 0.8
+function freeAt(x, z) { const i = Math.floor(x / CELL), j = Math.floor(z / CELL); return i >= 0 && j >= 0 && i < GW && j < GD && !grid[j * GW + i] }
+function lanePath(pts) {
+  if (pts.length < 3) return pts.map((p) => ({ ...p }))
+  const out = [{ ...pts[0] }]
+  for (let i = 1; i < pts.length - 1; i++) {
+    const a = pts[i - 1], b = pts[i], c = pts[i + 1]
+    const l1 = Math.hypot(b.x - a.x, b.z - a.z) || 1, l2 = Math.hypot(c.x - b.x, c.z - b.z) || 1
+    const r1 = { x: -(b.z - a.z) / l1, z: (b.x - a.x) / l1 }, r2 = { x: -(c.z - b.z) / l2, z: (c.x - b.x) / l2 }
+    let mx = r1.x + r2.x, mz = r1.z + r2.z; const ml = Math.hypot(mx, mz) || 1; mx /= ml; mz /= ml
+    const k = LANE / Math.max(0.5, mx * r1.x + mz * r1.z)
+    const q = { x: b.x + mx * k, z: b.z + mz * k }
+    out.push(freeAt(q.x, q.z) ? q : { ...b })
+  }
+  out.push({ ...pts[pts.length - 1] })
+  return out
+}
 function stepAgents(dt) {
+  const me = mode === 'walk' ? walker : mode === 'drive' ? user : null
   for (const a of agents) {
     if (a.wait > 0) { a.wait -= dt; continue }
-    const tgt = a.path[a.seg]
+    const path = a.lanes[a.dir > 0 ? 0 : 1]
+    const tgt = path[a.seg]
     const dx = tgt.x - a.x, dz = tgt.z - a.z, d = Math.hypot(dx, dz)
     if (d < 0.05) {
-      a.seg += a.dir
-      if (a.seg >= a.path.length || a.seg < 0) { a.dir *= -1; a.seg += 2 * a.dir; a.wait = a.machine ? 5 : 3; a.load.visible = a.dir > 0 }
+      a.seg++
+      if (a.seg >= path.length) { a.dir *= -1; a.seg = 1; a.wait = a.machine ? 5 : 3; a.load.visible = a.dir > 0 }
       continue
     }
     const want = Math.atan2(dx, dz), diff = angDiff(want, a.th)
     a.th = wrap(a.th + clamp(diff, -2.5 * dt, 2.5 * dt))
     let target = Math.abs(diff) > 0.4 ? 0 : a.speed
-    const me = mode === 'walk' ? walker : mode === 'drive' ? user : null
-    if (me) { const rx = me.x - a.x, rz = me.z - a.z, dd = Math.hypot(rx, rz); if (dd < 3 && rx * dx / d + rz * dz / d > 0.5 * dd) target = 0 }
+    // para atrás de quem está à frente na mesma faixa; num impasse, cede quem tem índice menor
+    const fx = dx / d, fz = dz / d
+    a.blockedBy = null
+    for (const b of agents) {
+      if (b === a) continue
+      const rx = b.x - a.x, rz = b.z - a.z, along = rx * fx + rz * fz, lat = Math.abs(rx * fz - rz * fx)
+      if (along <= 0 || along > (a.machine ? 3.2 : 1.6) || lat > (a.machine && b.machine ? 1.3 : 0.9)) continue
+      const deadlock = b.blockedBy === a && a.waitT > 3 && a.idx > b.idx && Math.hypot(rx, rz) > 1.5
+      if (!deadlock) { a.blockedBy = b; break }
+    }
+    if (me) { const rx = me.x - a.x, rz = me.z - a.z, dd = Math.hypot(rx, rz); if (dd < 3 && rx * fx + rz * fz > 0.5 * dd) target = 0 }
+    if (a.blockedBy) target = 0
+    a.waitT = target === 0 && a.v < 0.05 ? (a.waitT || 0) + dt : 0
     a.v += clamp(target - a.v, -3 * dt, 1.5 * dt)
-    const s = Math.min(Math.max(0, a.v) * dt, d); a.x += dx / d * s; a.z += dz / d * s
+    const st = Math.min(Math.max(0, a.v) * dt, d), nx = a.x + fx * st, nz = a.z + fz * st
+    // trava final: nunca aproximar a menos de 1,3 m (máquinas) / 0,7 m (pessoas) de outro agente
+    const tooClose = agents.find((b) => b !== a && Math.hypot(b.x - nx, b.z - nz) < (a.machine && b.machine ? 1.3 : 0.7) && Math.hypot(b.x - nx, b.z - nz) < Math.hypot(b.x - a.x, b.z - a.z))
+    if (tooClose && !(a.stuckT > 6 && a.idx > tooClose.idx && Math.hypot(tooClose.x - nx, tooClose.z - nz) > 1.0)) { a.v = 0; a.blockedBy = tooClose; a.stuckT = (a.stuckT || 0) + dt; continue }
+    a.stuckT = 0
+    a.x = nx; a.z = nz
   }
 }
 
@@ -1315,8 +1472,27 @@ usdStatus()
 
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); labelRenderer.setSize(innerWidth, innerHeight) })
 const clock = new THREE.Clock()
+let mmT = 1
+// Qualidade adaptativa: em máquinas sem placa de vídeo dedicada, abaixo de ~30 quadros/s o 3D
+// primeiro reduz a resolução e, se ainda faltar, desliga as sombras.
+const quality = { frames: 0, time: 0, level: 0 }
+function adaptQuality(rawDt) {
+  if (quality.level >= 2 || document.hidden) return
+  quality.frames++; quality.time += rawDt
+  if (quality.time < 3) return
+  const fps = quality.frames / quality.time
+  quality.frames = 0; quality.time = 0
+  if (fps >= 30) return
+  quality.level++
+  if (quality.level === 1) { renderer.setPixelRatio(1); renderer.setSize(innerWidth, innerHeight) }
+  else { renderer.shadowMap.enabled = false; scene.traverse((o) => { if (o.material) [].concat(o.material).forEach((m) => (m.needsUpdate = true)) }) }
+  document.getElementById('i-quality').textContent = quality.level === 1
+    ? 'Resolução reduzida para manter a fluidez.'
+    : 'Resolução reduzida e sombras desligadas para manter a fluidez.'
+}
 renderer.setAnimationLoop(() => {
-  const dt = Math.min(clock.getDelta(), 0.1)
+  const raw = clock.getDelta(), dt = Math.min(raw, 0.1)
+  if (project) adaptQuality(raw)
   if (project) {
     if (animOn) {
       stepAgents(dt)
@@ -1331,11 +1507,12 @@ renderer.setAnimationLoop(() => {
     if (mode === 'drive') updateUser(dt)
     updateCamera()
     if (controls.enabled) controls.update()
-    updateAlert(dt); drawMinimap()
+    updateAlert(dt)
+    if ((mmT += dt) > 0.12) { mmT = 0; drawMinimap() }
   }
   renderer.render(scene, camera); labelRenderer.render(scene, camera)
 })
-window.__viewer = { cam: (c, t) => { camera.position.set(...c); controls.target.set(...t); controls.update() }, screenOf: (id) => { const i = objInfo.find((q) => q.id === id); if (!i) return null; const v = new THREE.Vector3(i.f.cx, i.h / 2, i.f.cz).project(camera); return { x: (v.x + 1) / 2 * innerWidth, y: (1 - v.y) / 2 * innerHeight } }, selected: () => selectedId, load, setMode, stats: () => stats, agents: () => agents, user, keys, pallets: () => pallets, slots: () => slots, carrying: () => carrying, hint: () => hint }
+window.__viewer = { info: () => ({ tris: renderer.info.render.triangles, calls: renderer.info.render.calls, geos: renderer.info.memory.geometries }), ff: (s) => { for (let k = 0; k < s / 0.05; k++) stepAgents(0.05) }, minGap: () => { let m = Infinity; for (const a of agents) for (const b of agents) if (a !== b && a.machine && b.machine) m = Math.min(m, Math.hypot(a.x - b.x, a.z - b.z)); return m }, cam: (c, t) => { camera.position.set(...c); controls.target.set(...t); controls.update() }, screenOf: (id) => { const i = objInfo.find((q) => q.id === id); if (!i) return null; const v = new THREE.Vector3(i.f.cx, i.h / 2, i.f.cz).project(camera); return { x: (v.x + 1) / 2 * innerWidth, y: (1 - v.y) / 2 * innerHeight } }, selected: () => selectedId, load, setMode, stats: () => stats, agents: () => agents, user, keys, pallets: () => pallets, slots: () => slots, carrying: () => carrying, hint: () => hint }
 </script>
 </body>
 </html>

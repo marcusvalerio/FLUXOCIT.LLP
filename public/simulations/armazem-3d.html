@@ -235,10 +235,10 @@ const areaColor = (o) => AREA_COLORS[o.objectType] || AREA_COLORS[o.properties.a
 // ============================================================================================
 const app = document.getElementById('app')
 const renderer = new THREE.WebGLRenderer({ antialias: true })
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5))
 renderer.setSize(innerWidth, innerHeight)
 renderer.shadowMap.enabled = true
-renderer.shadowMap.type = THREE.PCFSoftShadowMap
+renderer.shadowMap.type = THREE.PCFShadowMap
 app.appendChild(renderer.domElement)
 
 const labelRenderer = new CSS2DRenderer({ element: document.getElementById('labels') })
@@ -248,7 +248,7 @@ const scene = new THREE.Scene()
 scene.background = new THREE.Color('#a9bccf')
 scene.fog = new THREE.Fog('#a9bccf', 90, 220)
 
-const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.05, 500)
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.15, 500)
 camera.position.set(W / 2 - 30, 42, D + 30)
 const controls = new OrbitControls(camera, renderer.domElement)
 controls.target.set(W / 2, 0, D / 2)
@@ -469,9 +469,28 @@ function graphPath(a, b) {
   for (let u = nb; u >= 0; u = prev[u]) path.unshift(nodes[u])
   return path
 }
+// Mão de direção: a rota é deslocada 0,8 m para a direita de cada trecho (como no trânsito), então
+// empilhadeiras em sentidos opostos passam lado a lado. Saída e chegada (posições de pega/entrega)
+// ficam no lugar; um canto deslocado que cairia dentro de um rack volta para o eixo.
+const LANE = 0.8
+const insideRack = (x, z) => obstacles.some((b) => x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6)
+function lanePath(pts) {
+  const out = [pts[0]]
+  for (let i = 1; i < pts.length - 1; i++) {
+    const a = pts[i - 1], b = pts[i], c = pts[i + 1]
+    const l1 = Math.hypot(b.x - a.x, b.z - a.z) || 1, l2 = Math.hypot(c.x - b.x, c.z - b.z) || 1
+    const r1 = { x: -(b.z - a.z) / l1, z: (b.x - a.x) / l1 }, r2 = { x: -(c.z - b.z) / l2, z: (c.x - b.x) / l2 }
+    let mx = r1.x + r2.x, mz = r1.z + r2.z; const ml = Math.hypot(mx, mz) || 1; mx /= ml; mz /= ml
+    const k = LANE / Math.max(0.5, mx * r1.x + mz * r1.z), q = { x: b.x + mx * k, z: b.z + mz * k }
+    out.push(insideRack(q.x, q.z) ? b : q)
+  }
+  out.push(pts[pts.length - 1])
+  return out
+}
 function planPath(from, to) {
-  const pts = [...graphPath(from, to), { x: to.x, z: to.z }]
-  return pts.filter((p, i) => i === 0 || Math.hypot(p.x - pts[i - 1].x, p.z - pts[i - 1].z) > 0.01)
+  const raw = [{ x: from.x, z: from.z }, ...graphPath(from, to), { x: to.x, z: to.z }]
+  const pts = raw.filter((p, i) => i === 0 || Math.hypot(p.x - raw[i - 1].x, p.z - raw[i - 1].z) > 0.01)
+  return lanePath(pts).slice(1)
 }
 
 // ============================================================================================
@@ -512,7 +531,7 @@ class Forklift {
     this.h = 0.05; this.v = 0; this.task = null; this.actions = []; this.cur = null; this.load = null
     this.wait = 0; this.retire = false; this.busySum = 0
   }
-  get busy() { return !!this.task }
+  get busy() { return !!this.task && !this.task.parking }
   assign(task) { this.task = task; this.actions = [...task.actions]; this.next() }
   next() {
     this.cur = this.actions.shift() || null
@@ -521,6 +540,7 @@ class Forklift {
   }
   step(dt) {
     const a = this.cur
+    this.idleT = this.task ? 0 : (this.idleT || 0) + dt
     if (!a) return
     if (a.type === 'go') { if (this.drive(dt)) { this.ep = a.ep; this.next() } }
     else if (a.type === 'turn') { const d = angDiff(a.ep.theta, this.th); this.th = wrap(this.th + clamp(d, -1.6 * dt, 1.6 * dt)); if (Math.abs(d) < 0.01) { this.th = a.ep.theta; this.next() } }
@@ -528,18 +548,38 @@ class Forklift {
     else if (a.type === 'do') { a.fn(this); this.next() }
   }
   blocked(dir) {
-    const others = forklifts.filter((f) => f !== this).map((f) => ({ x: f.x, z: f.z, r: 2.7, hard: false }))
+    const prev = this.blockedBy
+    this.blockedBy = null
+    const others = forklifts.filter((f) => f !== this).map((f) => ({ x: f.x, z: f.z, r: 2.7, hard: false, f }))
     if (mode === 'walk') others.push({ x: walker.x, z: walker.z, r: 3.2, hard: true })
     if (mode === 'drive') others.push({ x: user.x, z: user.z, r: 3.2, hard: true })
     for (const o of others) {
       const rx = o.x - this.x, rz = o.z - this.z, d = Math.hypot(rx, rz)
-      if (d < o.r && (rx * dir.x + rz * dir.z) > 0.55 * d && (o.hard || this.ghost <= 0)) return true
+      if (o.hard) { if (d < o.r && (rx * dir.x + rz * dir.z) > 0.55 * d) return true; continue }
+      // outra empilhadeira: só bloqueia se estiver à frente e na mesma faixa
+      const along = rx * dir.x + rz * dir.z, lat = Math.abs(rx * dir.z - rz * dir.x)
+      // histerese: quem já estava parado atrás de alguém só volta a andar com folga maior
+      if (!(along > 0 && along < (prev === o.f ? 3.8 : 3.2) && lat < (prev === o.f ? 1.5 : 1.3))) continue
+      this.blockedBy = o.f
+      return true
     }
     return false
   }
   drive(dt) {
     const wp = this.path[this.seg]
     if (!wp) return true
+    // Impasse resolvido como na operação real: a de menor prioridade dá ré até 2 m (sem encostar
+    // em rack, parede ou outra máquina) e espera a outra passar.
+    if (this.backoff > 0) {
+      const st = Math.min(0.8 * dt, this.backoff), nx = this.x - this.bdir.x * st, nz = this.z - this.bdir.z * st
+      const clear = nx > 1 && nz > 1 && nx < W - 1 && nz < D - 1 && !obstacles.some((b) => nx > b.x0 - 0.3 && nx < b.x1 + 0.3 && nz > b.z0 - 0.3 && nz < b.z1 + 0.3) &&
+        forklifts.every((f) => f === this || Math.hypot(f.x - nx, f.z - nz) > Math.min(1.5, Math.hypot(f.x - this.x, f.z - this.z)))
+      if (clear) { this.x = nx; this.z = nz; this.backoff -= st } else this.backoff = 0
+      if (this.backoff <= 0) this.yieldT = 3
+      this.v = 0
+      return false
+    }
+    if (this.yieldT > 0) { this.yieldT -= dt; return false }
     const dx = wp.x - this.x, dz = wp.z - this.z, d = Math.hypot(dx, dz)
     if (d < 0.03) {
       this.x = wp.x; this.z = wp.z; this.seg++; this.reverseOk = false
@@ -553,12 +593,18 @@ class Forklift {
     const vmax = (rev ? 1.2 : 2.5) * (this.load ? 0.8 : 1)
     let target = Math.abs(diff) > 0.25 ? 0 : Math.min(vmax, Math.sqrt(2 * 0.9 * d) + 0.25)
     const dir = { x: dx / d, z: dz / d }
-    // impasse entre empilhadeiras: após 3 s parada, ela passa a ignorar as outras por 4 s
-    this.ghost = Math.max(0, (this.ghost || 0) - dt)
-    if (this.blocked(dir)) { target = 0; this.wait += dt; if (this.wait > 3) { this.ghost = 4; this.wait = 0 } } else this.wait = 0
+    if (this.blocked(dir)) {
+      target = 0; this.wait += dt
+      const b = this.blockedBy
+      if (b && ((this.wait > 4 && (b.blockedBy === this || b.wait > 4) && this.i < b.i) || this.wait > 12)) { this.backoff = 2; this.bdir = dir; this.wait = 0 }
+    } else this.wait = 0
     this.v += clamp(target - this.v, -3 * dt, 1.2 * dt)
     const s = Math.min(Math.max(this.v, 0) * dt, d)
-    this.x += dir.x * s; this.z += dir.z * s
+    // trava final: nunca dar um passo que aproxime a menos de 1,3 m de outra empilhadeira
+    const nx = this.x + dir.x * s, nz = this.z + dir.z * s
+    const tooClose = forklifts.find((f) => f !== this && Math.hypot(f.x - nx, f.z - nz) < 1.3 && Math.hypot(f.x - nx, f.z - nz) < Math.hypot(f.x - this.x, f.z - this.z))
+    if (tooClose) { this.v = 0; this.wait += dt; this.blockedBy = tooClose; return false }
+    this.x = nx; this.z = nz
     heat[clamp(Math.floor(this.z), 0, D - 1) * W + clamp(Math.floor(this.x), 0, W - 1)] += dt
     return false
   }
@@ -753,9 +799,15 @@ function dispatch() {
     const idle = forklifts.filter((f) => !f.task && !f.retire)
     if (!idle.length) return
     const task = nextTask()
-    if (!task) return
+    if (!task) break
     const a = accessPoint(task.from)
     idle.sort((f, g) => Math.hypot(f.x - a.x, f.z - a.z) - Math.hypot(g.x - a.x, g.z - a.z))[0].assign(task)
+  }
+  // Sem tarefa por alguns segundos: volta para a própria vaga, em vez de ficar parada no meio de
+  // um corredor bloqueando as outras.
+  for (const f of forklifts) {
+    const park = PARK[f.i % PARK.length]
+    if (!f.task && !f.retire && f.idleT > 2 && f.ep !== park) f.assign({ kind: 'Estacionar', parking: true, from: park, actions: [{ type: 'go', ep: park }, { type: 'turn', ep: park }] })
   }
 }
 
@@ -1087,7 +1139,7 @@ renderer.setAnimationLoop(() => {
   renderer.render(scene, camera)
   labelRenderer.render(scene, camera)
 })
-window.__sim = { dbg: () => forklifts.map((f) => [f.cur?.type, f.task?.kind, f.x.toFixed(1), f.z.toFixed(1), f.seg, f.path?.length, f.wait.toFixed(1)]), fastForward: (s) => { for (let k = 0; k < s / 0.05; k++) simStep(0.05) }, get simT() { return simT }, stats, forklifts: () => forklifts, slots, util, setMode, P }
+window.__sim = { dbg: () => forklifts.map((f) => [f.i, f.cur?.type, f.task?.kind, f.x.toFixed(1), f.z.toFixed(1), f.th.toFixed(2), f.seg, f.path?.length, f.wait.toFixed(1), f.blockedBy?.i, f.path && JSON.stringify(f.path.slice(f.seg, f.seg + 2).map((p) => [+p.x.toFixed(1), +p.z.toFixed(1)]))]), fastForward: (s) => { for (let k = 0; k < s / 0.05; k++) simStep(0.05) }, get simT() { return simT }, stats, forklifts: () => forklifts, slots, util, setMode, P }
 </script>
 </body>
 </html>

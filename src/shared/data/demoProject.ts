@@ -2,30 +2,30 @@ import type { LayoutObject, ObjectCategory, ObjectTypeKey } from '../../types/la
 import type { FlowConnection, FlowNode } from '../../types/flow'
 
 /**
- * Projeto pronto para demonstrar o app — principalmente a aba 3D: um CD pequeno com porta-paletes,
- * picking, expedição/recebimento com docas, pátio de contêineres, devolução com gaiolas aramadas e
- * uma área de recarga de equipamentos, além de um Fluxo com etapas vinculadas ao Layout.
+ * Projeto pronto para demonstrar o app — principalmente a aba 3D: um centro de distribuição de
+ * bebidas de 80 × 50 m, no estilo de um CD de cervejaria (sem marca): linhas de envase,
+ * paletização, blocado de fardos/barris/engradados, drive-ins, 8 docas de expedição com carretas
+ * sider e recebimento de vasilhame, além de um Fluxo com etapas vinculadas ao Layout.
  *
  * O arranjo segue as principais exigências de segurança brasileiras que têm reflexo no layout
  * (referência de demonstração, não laudo — a validação é do responsável técnico do projeto):
- * - NR-11 (movimentação e armazenagem): corredores de empilhadeira dimensionados para a máquina,
- *   sentido único sinalizado, área própria para estacionamento/recarga, zona de manobra nas docas.
- * - NR-12 item 12.2.1: vias principais de circulação de pessoas com no mínimo 1,20 m, demarcadas
- *   e segregadas do tráfego de máquinas; travessia sinalizada onde a faixa cruza o corredor.
- * - NR-26 / ABNT NBR 7195: demarcações em amarelo para circulação e zonas de risco.
- * - NR-23 + instruções técnicas do Corpo de Bombeiros: rota de pedestres contínua até a saída,
- *   corredores livres, extintores a até 20 m, hidrante, placas de saída e iluminação de emergência.
- * - NR-10/NR-11: lava-olhos junto à área de recarga de baterias.
- * - ABNT NBR 15524 (porta-paletes): colunas protegidas e ruas com acesso pelos dois lados.
+ * - NR-11 (movimentação e armazenagem): corredores de empilhadeira de 4 m, área própria para
+ *   estacionamento/recarga, zona de manobra em cada doca.
+ * - NR-12 item 12.2.1: vias de pedestres com 1,20 m, demarcadas e segregadas do tráfego de máquinas.
+ * - NR-26 / ABNT NBR 7195: demarcações de circulação e zonas de risco.
+ * - NR-23 + instruções técnicas do Corpo de Bombeiros: duas saídas de pessoas sinalizadas, rota de
+ *   pedestres contínua, extintores a até 20 m, hidrantes e iluminação de emergência.
+ * - NR-10/NR-11: lava-olhos junto à recarga de baterias.
  * Medidas em cm, como em todo LayoutObject.
  */
 export const DEMO_PROJECT = {
-  name: 'Projeto demonstrativo',
-  widthM: 36,
-  heightM: 26,
+  name: 'CD de Bebidas (demonstrativo)',
+  widthM: 80,
+  heightM: 50,
   description:
-    'CD de demonstração organizado conforme NR-11, NR-12 (vias de pessoas ≥ 1,20 m), NR-26 (demarcação) e NR-23 ' +
-    '(rota até a saída). Referência ilustrativa: valide com o responsável técnico de segurança.',
+    'Centro de distribuição de bebidas de demonstração organizado conforme NR-11, NR-12 (vias de pessoas ≥ 1,20 m), ' +
+    'NR-26 (demarcação) e NR-23 (saídas, extintores, hidrantes, iluminação de emergência). Referência ilustrativa: ' +
+    'valide com o responsável técnico de segurança.',
 }
 
 function obj(
@@ -43,114 +43,156 @@ function obj(
   return { id, objectType, category, x, y, width, length, rotationDeg, zIndex: 0, properties, ...(name ? { name } : {}) }
 }
 
+/** Blocado 4 colunas × 2 filas, com corredores de 4 m entre os blocos. */
+const BLOCK_COLS = [600, 2100, 3600, 5100]
+const BLOCK_ROWS = [1820, 3020]
+const BLOCK_W = 1100
+const BLOCK_L = 800
+const BLOCK_LOADS = [
+  ['beverage', 'beverage', 'beverage', 'beverage'],
+  ['beverage', 'beverage', 'kegs', 'crates'],
+]
+const BLOCK_NAMES = [
+  ['Blocado A1 — fardos', 'Blocado A2 — fardos', 'Blocado A3 — fardos', 'Blocado A4 — fardos'],
+  ['Blocado B1 — fardos', 'Blocado B2 — fardos', 'Blocado B3 — barris', 'Blocado B4 — vasilhame'],
+]
+
 export function buildDemoObjects(): LayoutObject[] {
   const objects: LayoutObject[] = [
-    // --- Áreas operacionais (sem sobreposição entre si nem sobre as docas)
-    obj('demo-area-admin', 'area', 'area', 200, 100, 1100, 450, { areaType: 'administrative' }, 'Administrativo'),
-    obj('demo-area-picking', 'area-picking', 'storage', 1900, 100, 800, 500, {}, 'Picking'),
-    obj('demo-area-yard', 'area', 'area', 2800, 100, 700, 900, { areaType: 'custom' }, 'Pátio de contêineres'),
-    obj('demo-area-returns', 'area', 'area', 1900, 800, 800, 500, { areaType: 'returns' }, 'Devolução / Quarentena'),
-    obj('demo-area-charging', 'area', 'area', 2800, 1150, 700, 550, { areaType: 'custom' }, 'Estacionamento e recarga de baterias'),
-    obj('demo-area-shipping', 'area-shipping', 'area', 1900, 1900, 800, 480, {}, 'Expedição'),
-    obj('demo-area-receiving', 'area-receiving', 'area', 2800, 1900, 700, 480, {}, 'Recebimento'),
+    // --- Faixa superior: produção e apoio (áreas sem sobreposição entre si)
+    obj('demo-area-filling', 'area', 'area', 200, 200, 2400, 1080, { areaType: 'custom' }, 'Linhas de envase'),
+    obj('demo-area-palletizing', 'area', 'area', 2700, 200, 900, 1080, { areaType: 'staging' }, 'Paletização'),
+    obj('demo-area-charging', 'area', 'area', 3700, 200, 1000, 1080, { areaType: 'custom' }, 'Recarga de baterias'),
+    obj('demo-area-admin', 'area', 'area', 4800, 200, 1000, 1080, { areaType: 'administrative' }, 'Administrativo'),
+    obj('demo-area-picking', 'area-picking', 'storage', 5900, 200, 1900, 1080, {}, 'Picking'),
 
-    // --- Armazenagem: 4 ruas de porta-paletes (B e C costas com costas) e corredores de 3,50 m
-    obj('demo-rack-a', 'rack', 'storage', 400, 800, 1080, 110, { bays: 4, levels: 4 }, 'Rua A'),
-    obj('demo-rack-b', 'rack', 'storage', 400, 1260, 1080, 110, { bays: 4, levels: 4 }, 'Rua B'),
-    obj('demo-rack-c', 'rack', 'storage', 400, 1370, 1080, 110, { bays: 4, levels: 4 }, 'Rua C'),
-    obj('demo-rack-d', 'rack', 'storage', 400, 1830, 1080, 110, { bays: 4, levels: 4 }, 'Rua D'),
-    obj('demo-aisle-1', 'corridor', 'storage', 400, 910, 1080, 350, { corridorType: 'forklift', direction: 'one-way' }, 'Corredor 1'),
-    obj('demo-aisle-2', 'corridor', 'storage', 400, 1480, 1080, 350, { corridorType: 'forklift', direction: 'one-way' }, 'Corredor 2'),
-    obj('demo-aisle-main', 'corridor', 'storage', 1500, 800, 350, 1700, { corridorType: 'forklift', direction: 'two-way' }, 'Corredor principal'),
-    obj('demo-arrow-1', 'directional-arrow', 'flow', 900, 1065, 80, 40),
-    obj('demo-arrow-2', 'directional-arrow', 'flow', 900, 1635, 80, 40, {}, undefined, 180),
+    // --- Circulação: pedestres (NR-12 ≥ 1,20 m) e corredores de empilhadeira de 4 m
+    obj('demo-walk-west', 'pedestrian-lane', 'flow', 30, 150, 120, 4830, { flowType: 'people' }, 'Rota de pedestres'),
+    obj('demo-walk-north', 'pedestrian-lane', 'flow', 150, 1300, 7700, 120, { flowType: 'people' }, 'Passarela norte'),
+    obj('demo-aisle-north', 'corridor', 'storage', 150, 1420, 7700, 400, { corridorType: 'forklift', direction: 'two-way' }, 'Corredor principal'),
+    obj('demo-aisle-south', 'corridor', 'storage', 150, 3820, 7700, 400, { corridorType: 'forklift', direction: 'two-way' }, 'Corredor das docas'),
+    obj('demo-aisle-mid', 'corridor', 'storage', 600, 2620, 5600, 400, { corridorType: 'forklift', direction: 'two-way' }, 'Corredor central'),
+    obj('demo-aisle-west', 'corridor', 'storage', 160, 1820, 400, 2000, { corridorType: 'forklift', direction: 'one-way' }, 'Rua oeste'),
+    obj('demo-aisle-1a', 'corridor', 'storage', 1700, 1820, 400, 800, { corridorType: 'forklift', direction: 'one-way' }, 'Rua 1 (norte)'),
+    obj('demo-aisle-1b', 'corridor', 'storage', 1700, 3020, 400, 800, { corridorType: 'forklift', direction: 'one-way' }, 'Rua 1 (sul)'),
+    obj('demo-aisle-2a', 'corridor', 'storage', 3200, 1820, 400, 800, { corridorType: 'forklift', direction: 'one-way' }, 'Rua 2 (norte)'),
+    obj('demo-aisle-2b', 'corridor', 'storage', 3200, 3020, 400, 800, { corridorType: 'forklift', direction: 'one-way' }, 'Rua 2 (sul)'),
+    obj('demo-aisle-3a', 'corridor', 'storage', 4700, 1820, 400, 800, { corridorType: 'forklift', direction: 'one-way' }, 'Rua 3 (norte)'),
+    obj('demo-aisle-3b', 'corridor', 'storage', 4700, 3020, 400, 800, { corridorType: 'forklift', direction: 'one-way' }, 'Rua 3 (sul)'),
+    obj('demo-aisle-east', 'corridor', 'storage', 6200, 1820, 400, 2000, { corridorType: 'forklift', direction: 'two-way' }, 'Rua dos drive-ins'),
 
-    // --- Circulação de pessoas (NR-12: ≥ 1,20 m, segregada) e travessia sinalizada
-    obj('demo-walk-west', 'pedestrian-lane', 'flow', 30, 100, 120, 2480, { flowType: 'people' }, 'Rota de pedestres'),
-    obj('demo-walk-north', 'pedestrian-lane', 'flow', 150, 620, 1700, 120, { flowType: 'people' }, 'Acesso ao picking'),
-    obj('demo-crossing', 'intersection', 'flow', 1500, 620, 350, 120, {}, 'Travessia de pedestres'),
-    obj('demo-exit', 'door', 'structure', 30, 2580, 120, 20, {}, 'Saída de pessoas'),
-    obj('demo-stairs', 'stairs', 'structure', 1100, 130, 120, 300, {}, 'Escada do mezanino'),
+    // --- Saídas de pessoas (duas, em lados opostos)
+    obj('demo-exit-west', 'door', 'structure', 30, 4980, 120, 20, {}, 'Saída de pessoas oeste'),
+    obj('demo-exit-north', 'door', 'structure', 5200, 0, 120, 20, {}, 'Saída de pessoas norte'),
+    obj('demo-stairs', 'stairs', 'structure', 5600, 300, 120, 300, {}, 'Escada do mezanino'),
 
-    // --- Estrutura
-    obj('demo-col-1', 'column', 'structure', 1650, 400, 40, 40),
-    obj('demo-col-2', 'column', 'structure', 2750, 1800, 40, 40),
+    // --- Linhas de envase e paletização
+    obj('demo-line-1', 'conveyor', 'equipment', 400, 420, 2000, 80, {}, 'Linha de envase 1'),
+    obj('demo-line-2', 'conveyor', 'equipment', 400, 720, 2000, 80, {}, 'Linha de envase 2'),
+    obj('demo-line-3', 'conveyor', 'equipment', 400, 1020, 2000, 80, {}, 'Linha de envase 3'),
+    obj('demo-pal-conveyor', 'conveyor', 'equipment', 2800, 720, 700, 80, {}, 'Transportador de paletização'),
+    obj('demo-scale', 'scale', 'equipment', 2850, 400, 100, 100, {}, 'Balança de pallets'),
+    obj('demo-pal-label', 'label-printer', 'equipment', 3100, 420, 45, 35),
+    obj('demo-pal-out-1', 'pallet', 'pallet', 2850, 950, 100, 120, { load: 'beverage' }),
+    obj('demo-pal-out-2', 'pallet', 'pallet', 3050, 950, 100, 120, { load: 'beverage' }),
 
-    // --- Docas e zonas de manobra
-    obj('demo-dock-ship', 'dock', 'structure', 2125, 2550, 350, 50, {}, 'Doca E1'),
-    obj('demo-dock-recv', 'dock', 'structure', 2975, 2550, 350, 50, {}, 'Doca R1'),
-    obj('demo-safety-ship', 'safety-zone', 'flow', 2075, 2400, 450, 140, {}, 'Zona de manobra'),
-    obj('demo-safety-recv', 'safety-zone', 'flow', 2925, 2400, 450, 140, {}, 'Zona de manobra'),
+    // --- Recarga de baterias: equipamentos estacionados fora das vias
+    obj('demo-forklift-1', 'forklift', 'equipment', 3780, 300, 120, 230),
+    obj('demo-forklift-2', 'forklift', 'equipment', 3950, 300, 120, 230),
+    obj('demo-reach', 'reach-truck', 'equipment', 4120, 300, 115, 250),
+    obj('demo-tug', 'tug', 'equipment', 4290, 300, 70, 130),
+    obj('demo-jack', 'pallet-jack', 'equipment', 4410, 300, 68, 150),
+    obj('demo-cart', 'platform-cart', 'equipment', 4530, 300, 80, 120),
 
     // --- Picking
-    obj('demo-conveyor', 'conveyor', 'equipment', 2000, 480, 600, 80),
-    obj('demo-packing', 'packing-table', 'equipment', 2000, 180, 150, 80),
-    obj('demo-sorting', 'sorting-bench', 'equipment', 2250, 180, 150, 70),
-    obj('demo-label', 'label-printer', 'equipment', 2480, 200, 45, 35),
-    obj('demo-rf', 'rf-scanner', 'equipment', 2560, 200, 35, 15),
+    obj('demo-pick-conveyor', 'conveyor', 'equipment', 6000, 950, 1600, 80, {}, 'Esteira do picking'),
+    obj('demo-packing-1', 'packing-table', 'equipment', 6000, 400, 150, 80),
+    obj('demo-packing-2', 'packing-table', 'equipment', 6250, 400, 150, 80),
+    obj('demo-sorting', 'sorting-bench', 'equipment', 6500, 400, 150, 70),
+    obj('demo-label', 'label-printer', 'equipment', 6800, 420, 45, 35),
+    obj('demo-rf', 'rf-scanner', 'equipment', 6900, 420, 35, 15),
 
-    // --- Pátio de contêineres
-    obj('demo-container-1', 'container', 'pallet', 2850, 180, 606, 244, {}, 'Contêiner'),
-    obj('demo-container-2', 'container', 'pallet', 2850, 600, 606, 244, {}, 'Contêiner'),
+    // --- Drive-ins de fardos
+    obj('demo-drivein-1', 'drive-in', 'storage', 6600, 1820, 1200, 1000, { levels: 5, load: 'beverage' }, 'Drive-in 1'),
+    obj('demo-drivein-2', 'drive-in', 'storage', 6600, 3000, 1200, 820, { levels: 5, load: 'beverage' }, 'Drive-in 2'),
 
-    // --- Devolução / quarentena: gaiolas aramadas
-    obj('demo-cage-1', 'cage-pallet', 'pallet', 2000, 900, 120, 100),
-    obj('demo-cage-2', 'cage-pallet', 'pallet', 2180, 900, 120, 100),
-    obj('demo-cage-3', 'cage-pallet', 'pallet', 2360, 900, 120, 100),
-    obj('demo-cage-4', 'cage-pallet', 'pallet', 2000, 1080, 120, 100),
+    // --- Expedição (8 docas) e recebimento de vasilhame (2 docas), com zona de manobra em cada doca
+    obj('demo-area-shipping', 'area-shipping', 'area', 600, 4240, 5000, 320, {}, 'Expedição'),
+    obj('demo-area-receiving', 'area-receiving', 'area', 5900, 4240, 1900, 320, {}, 'Recebimento de vasilhame'),
+    obj('demo-ship-pallet-1', 'pallet', 'pallet', 900, 4300, 100, 120, { load: 'beverage' }),
+    obj('demo-ship-pallet-2', 'pallet', 'pallet', 1050, 4300, 100, 120, { load: 'beverage' }),
+    obj('demo-ship-pallet-3', 'pallet', 'pallet', 1500, 4300, 100, 120, { load: 'kegs' }),
+    obj('demo-recv-pallet-1', 'pallet', 'pallet', 6100, 4300, 100, 120, { load: 'crates' }),
+    obj('demo-recv-pallet-2', 'pallet', 'pallet', 6250, 4300, 100, 120, { load: 'crates' }),
 
-    // --- Estacionamento e recarga: equipamentos parados fora das vias
-    obj('demo-forklift', 'forklift', 'equipment', 2880, 1250, 120, 230),
-    obj('demo-reach', 'reach-truck', 'equipment', 3080, 1250, 115, 250),
-    obj('demo-jack', 'pallet-jack', 'equipment', 3280, 1250, 68, 150),
-    obj('demo-tug', 'tug', 'equipment', 3380, 1250, 70, 130),
-    obj('demo-cart', 'platform-cart', 'equipment', 3280, 1480, 80, 120),
-
-    // --- Combate a incêndio e emergência (NR-23 + IT do Corpo de Bombeiros): extintores com
-    // demarcação de piso cobrindo o galpão, hidrante, placas de saída ao longo da rota de pedestres,
-    // iluminação de emergência e lava-olhos junto à recarga de baterias.
-    obj('demo-ext-1', 'fire-extinguisher', 'safety', 160, 1000, 70, 70, { agent: 'abc' }, 'Extintor 1'),
-    obj('demo-ext-2', 'fire-extinguisher', 'safety', 160, 2000, 70, 70, { agent: 'abc' }, 'Extintor 2'),
-    obj('demo-ext-3', 'fire-extinguisher', 'safety', 900, 2200, 70, 70, { agent: 'abc' }, 'Extintor 3'),
-    obj('demo-ext-4', 'fire-extinguisher', 'safety', 1860, 1500, 70, 70, { agent: 'abc' }, 'Extintor 4'),
-    obj('demo-ext-5', 'fire-extinguisher', 'safety', 2720, 300, 70, 70, { agent: 'abc' }, 'Extintor 5'),
-    obj('demo-ext-6', 'fire-extinguisher', 'safety', 2720, 1500, 70, 70, { agent: 'co2' }, 'Extintor 6 (recarga)'),
-    obj('demo-ext-7', 'fire-extinguisher', 'safety', 2720, 2100, 70, 70, { agent: 'abc' }, 'Extintor 7'),
-    obj('demo-ext-8', 'fire-extinguisher', 'safety', 3420, 1750, 70, 70, { agent: 'abc' }, 'Extintor 8'),
-    obj('demo-hydrant', 'fire-hydrant', 'safety', 1320, 2400, 90, 30, {}, 'Hidrante'),
-    obj('demo-exit-sign-1', 'emergency-exit', 'safety', 60, 2540, 60, 20, {}, 'Saída'),
-    obj('demo-exit-sign-2', 'emergency-exit', 'safety', 60, 1300, 60, 20, {}, 'Rota de fuga', 90),
-    obj('demo-light-1', 'emergency-light', 'safety', 70, 700, 40, 15),
-    obj('demo-light-2', 'emergency-light', 'safety', 70, 1900, 40, 15),
-    obj('demo-light-3', 'emergency-light', 'safety', 1600, 2560, 40, 15),
-    obj('demo-light-4', 'emergency-light', 'safety', 2750, 1050, 40, 15),
-    obj('demo-eyewash', 'eyewash', 'safety', 3380, 1580, 70, 70, {}, 'Lava-olhos (recarga)'),
-
-    // --- Recebimento e expedição
-    obj('demo-scale', 'scale', 'equipment', 3300, 2000, 100, 100),
-    obj('demo-pallet-1', 'pallet', 'pallet', 2900, 2050, 100, 120),
-    obj('demo-pallet-2', 'pallet', 'pallet', 3050, 2050, 100, 120),
-    obj('demo-box-1', 'box', 'pallet', 2000, 2000, 60, 40),
-    obj('demo-box-2', 'box', 'pallet', 2080, 2000, 60, 40),
-    obj('demo-box-3', 'box', 'pallet', 2000, 2060, 80, 60),
+    // --- Combate a incêndio e emergência
+    obj('demo-hydrant-1', 'fire-hydrant', 'safety', 7900, 2300, 90, 30, {}, 'Hidrante 1'),
+    obj('demo-hydrant-2', 'fire-hydrant', 'safety', 7900, 3500, 90, 30, {}, 'Hidrante 2'),
+    obj('demo-hydrant-3', 'fire-hydrant', 'safety', 2650, 1200, 90, 30, {}, 'Hidrante 3'),
+    obj('demo-exit-sign-west', 'emergency-exit', 'safety', 60, 4940, 60, 20, {}, 'Saída'),
+    obj('demo-exit-sign-west-2', 'emergency-exit', 'safety', 60, 2600, 60, 20, {}, 'Rota de fuga', 90),
+    obj('demo-exit-sign-north', 'emergency-exit', 'safety', 5230, 40, 60, 20, {}, 'Saída'),
+    obj('demo-light-1', 'emergency-light', 'safety', 70, 1000, 40, 15),
+    obj('demo-light-2', 'emergency-light', 'safety', 70, 2500, 40, 15),
+    obj('demo-light-3', 'emergency-light', 'safety', 70, 4000, 40, 15),
+    obj('demo-light-4', 'emergency-light', 'safety', 2000, 1350, 40, 15),
+    obj('demo-light-5', 'emergency-light', 'safety', 4500, 1350, 40, 15),
+    obj('demo-light-6', 'emergency-light', 'safety', 7000, 1350, 40, 15),
+    obj('demo-eyewash', 'eyewash', 'safety', 4600, 1100, 70, 70, {}, 'Lava-olhos (recarga)'),
+    obj('demo-ext-filling-1', 'fire-extinguisher', 'safety', 600, 1150, 70, 70, { agent: 'abc' }, 'Extintor envase 1'),
+    obj('demo-ext-filling-2', 'fire-extinguisher', 'safety', 2000, 1150, 70, 70, { agent: 'abc' }, 'Extintor envase 2'),
+    obj('demo-ext-palletizing', 'fire-extinguisher', 'safety', 3400, 1150, 70, 70, { agent: 'abc' }, 'Extintor paletização'),
+    obj('demo-ext-charging', 'fire-extinguisher', 'safety', 4100, 1150, 70, 70, { agent: 'co2' }, 'Extintor recarga'),
+    obj('demo-ext-admin', 'fire-extinguisher', 'safety', 5300, 1150, 70, 70, { agent: 'abc' }, 'Extintor administrativo'),
+    obj('demo-ext-picking', 'fire-extinguisher', 'safety', 7000, 1150, 70, 70, { agent: 'abc' }, 'Extintor picking'),
+    obj('demo-ext-drivein', 'fire-extinguisher', 'safety', 7810, 2840, 70, 70, { agent: 'abc' }, 'Extintor drive-in'),
+    obj('demo-ext-ship-1', 'fire-extinguisher', 'safety', 700, 4400, 70, 70, { agent: 'abc' }, 'Extintor expedição 1'),
+    obj('demo-ext-ship-2', 'fire-extinguisher', 'safety', 3000, 4400, 70, 70, { agent: 'abc' }, 'Extintor expedição 2'),
+    obj('demo-ext-ship-3', 'fire-extinguisher', 'safety', 5300, 4400, 70, 70, { agent: 'abc' }, 'Extintor expedição 3'),
+    obj('demo-ext-recv', 'fire-extinguisher', 'safety', 7600, 4400, 70, 70, { agent: 'abc' }, 'Extintor recebimento'),
   ]
+
+  // Blocados, cada um com uma coluna da estrutura (protegida) e um extintor no canto
+  BLOCK_ROWS.forEach((y, r) =>
+    BLOCK_COLS.forEach((x, c) => {
+      objects.push(
+        obj(`demo-block-${r}${c}`, 'storage-block', 'storage', x, y, BLOCK_W, BLOCK_L, { levels: 4, load: BLOCK_LOADS[r]![c], fill: 0.85 }, BLOCK_NAMES[r]![c]),
+        obj(`demo-col-${r}${c}`, 'column', 'structure', x + 20, y + 20, 40, 40),
+        obj(`demo-ext-block-${r}${c}`, 'fire-extinguisher', 'safety', x + 80, y + 10, 70, 70, { agent: 'abc' }, 'Extintor'),
+      )
+    }),
+  )
+
+  // Docas: 8 de expedição e 2 de recebimento, cada uma com zona de manobra à frente
+  const docks = [...Array.from({ length: 8 }, (_, k) => ({ x: 800 + k * 600, name: `Doca E${k + 1}` })), { x: 6200, name: 'Doca R1' }, { x: 6900, name: 'Doca R2' }]
+  docks.forEach((d, k) => {
+    objects.push(
+      obj(`demo-dock-${k}`, 'dock', 'structure', d.x, 4950, 350, 50, {}, d.name),
+      obj(`demo-dock-zone-${k}`, 'safety-zone', 'flow', d.x - 50, 4580, 450, 340, {}, 'Zona de manobra'),
+    )
+  })
+
   return objects.map((o, i) => ({ ...o, zIndex: i }))
 }
 
 export function buildDemoFlow(): { flowNodes: FlowNode[]; flowConnections: FlowConnection[] } {
   const flowNodes: FlowNode[] = [
-    { id: 'demo-n-receiving', type: 'receiving', name: 'Recebimento', x: 40, y: 120, linkedObjectId: 'demo-area-receiving', capacity: 30, capacityUnit: 'pallets/h' },
-    { id: 'demo-n-storage', type: 'storage', name: 'Armazenagem (Rua A)', x: 260, y: 120, linkedObjectId: 'demo-rack-a', capacity: 32, capacityUnit: 'posições' },
-    { id: 'demo-n-picking', type: 'picking', name: 'Picking', x: 480, y: 120, linkedObjectId: 'demo-area-picking', capacity: 40, capacityUnit: 'pedidos/h' },
-    { id: 'demo-n-shipping', type: 'shipping', name: 'Expedição', x: 700, y: 120, linkedObjectId: 'demo-area-shipping', capacity: 25, capacityUnit: 'pallets/h' },
-    { id: 'demo-n-returns', type: 'returns', name: 'Devolução', x: 260, y: 280, linkedObjectId: 'demo-area-returns', capacity: 10, capacityUnit: 'caixas/h' },
+    { id: 'demo-n-filling', type: 'custom', name: 'Envase', x: 40, y: 120, linkedObjectId: 'demo-area-filling', capacity: 120, capacityUnit: 'pallets/h' },
+    { id: 'demo-n-palletizing', type: 'staging', name: 'Paletização', x: 260, y: 120, linkedObjectId: 'demo-area-palletizing', capacity: 120, capacityUnit: 'pallets/h' },
+    { id: 'demo-n-storage', type: 'storage', name: 'Blocado de fardos', x: 480, y: 120, linkedObjectId: 'demo-block-00', capacity: 1300, capacityUnit: 'posições' },
+    { id: 'demo-n-picking', type: 'picking', name: 'Picking', x: 700, y: 120, linkedObjectId: 'demo-area-picking', capacity: 60, capacityUnit: 'pedidos/h' },
+    { id: 'demo-n-shipping', type: 'shipping', name: 'Expedição', x: 920, y: 120, linkedObjectId: 'demo-area-shipping', capacity: 90, capacityUnit: 'pallets/h' },
+    { id: 'demo-n-receiving', type: 'receiving', name: 'Recebimento de vasilhame', x: 480, y: 300, linkedObjectId: 'demo-area-receiving', capacity: 40, capacityUnit: 'pallets/h' },
+    { id: 'demo-n-crates', type: 'storage', name: 'Vasilhame', x: 260, y: 300, linkedObjectId: 'demo-block-13', capacity: 300, capacityUnit: 'posições' },
   ]
   const flowConnections: FlowConnection[] = [
-    { id: 'demo-c-1', fromNodeId: 'demo-n-receiving', toNodeId: 'demo-n-storage', flowType: 'forklift' },
-    { id: 'demo-c-2', fromNodeId: 'demo-n-storage', toNodeId: 'demo-n-picking', flowType: 'pallet' },
-    { id: 'demo-c-3', fromNodeId: 'demo-n-picking', toNodeId: 'demo-n-shipping', flowType: 'people' },
-    { id: 'demo-c-4', fromNodeId: 'demo-n-receiving', toNodeId: 'demo-n-returns', flowType: 'pallet' },
-    { id: 'demo-c-5', fromNodeId: 'demo-n-returns', toNodeId: 'demo-n-storage', flowType: 'forklift', label: 'Reintegração ao estoque' },
+    { id: 'demo-c-1', fromNodeId: 'demo-n-filling', toNodeId: 'demo-n-palletizing', flowType: 'material', label: 'Esteira' },
+    { id: 'demo-c-2', fromNodeId: 'demo-n-palletizing', toNodeId: 'demo-n-storage', flowType: 'forklift' },
+    { id: 'demo-c-3', fromNodeId: 'demo-n-storage', toNodeId: 'demo-n-picking', flowType: 'pallet' },
+    { id: 'demo-c-4', fromNodeId: 'demo-n-picking', toNodeId: 'demo-n-shipping', flowType: 'forklift' },
+    { id: 'demo-c-5', fromNodeId: 'demo-n-storage', toNodeId: 'demo-n-shipping', flowType: 'forklift', label: 'Pallet fechado' },
+    { id: 'demo-c-6', fromNodeId: 'demo-n-receiving', toNodeId: 'demo-n-crates', flowType: 'forklift' },
+    { id: 'demo-c-7', fromNodeId: 'demo-n-crates', toNodeId: 'demo-n-filling', flowType: 'pallet', label: 'Vasilhame para envase' },
   ]
   return { flowNodes, flowConnections }
 }

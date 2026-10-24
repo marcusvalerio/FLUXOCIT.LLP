@@ -53,6 +53,19 @@ const BASE_FIELDS: PropertyFieldDefinition[] = [
   { key: 'rotationDeg', label: 'Rotação', kind: 'number-deg', step: 15 },
 ]
 
+/** O que está paletizado — só muda a aparência no 3D (caixas, fardos de bebida, barris, engradados). */
+const LOAD_FIELD: PropertyFieldDefinition = {
+  key: 'load',
+  label: 'Tipo de carga',
+  kind: 'select',
+  options: [
+    { value: 'box', label: 'Caixas' },
+    { value: 'beverage', label: 'Fardos de bebida' },
+    { value: 'kegs', label: 'Barris' },
+    { value: 'crates', label: 'Engradados (vasilhame)' },
+  ],
+}
+
 const DIMENSION_FIELDS: PropertyFieldDefinition[] = [
   { key: 'width', label: 'Largura', kind: 'number-m', min: 0.1, step: 0.1 },
   { key: 'length', label: 'Comprimento', kind: 'number-m', min: 0.1, step: 0.1 },
@@ -162,6 +175,8 @@ export const OBJECT_CATALOG: Record<ObjectTypeKey, ObjectTypeDefinition> = {
           return String(bays * levels)
         },
       },
+      LOAD_FIELD,
+
     ],
     defaultProperties: { bays: 3, levels: 3 },
   },
@@ -195,7 +210,7 @@ export const OBJECT_CATALOG: Record<ObjectTypeKey, ObjectTypeDefinition> = {
     defaultLength: 100,
     resizable: false,
     render: Pallet,
-    propertyFields: [...BASE_FIELDS],
+    propertyFields: [...BASE_FIELDS, LOAD_FIELD],
   },
   forklift: {
     key: 'forklift',
@@ -236,6 +251,7 @@ export const OBJECT_CATALOG: Record<ObjectTypeKey, ObjectTypeDefinition> = {
         kind: 'info',
         compute: (obj) => `${((obj.width / 100) * (obj.length / 100)).toFixed(1)} m²`,
       },
+
     ],
     defaultProperties: { areaType: 'storage' },
   },
@@ -290,6 +306,8 @@ export const OBJECT_CATALOG: Record<ObjectTypeKey, ObjectTypeDefinition> = {
         kind: 'info',
         compute: (obj) => `${((obj.width / 100) * (obj.length / 100)).toFixed(1)} m²`,
       },
+      LOAD_FIELD,
+
     ],
   },
   'area-picking': {
@@ -565,6 +583,8 @@ export const OBJECT_CATALOG: Record<ObjectTypeKey, ObjectTypeDefinition> = {
       ...DIMENSION_FIELDS,
       ADDRESS_FIELD,
       { key: 'levels', label: 'Níveis', kind: 'select', options: LEVEL_OPTIONS },
+      LOAD_FIELD,
+
     ],
     defaultProperties: { levels: 3 },
   },
@@ -581,6 +601,8 @@ export const OBJECT_CATALOG: Record<ObjectTypeKey, ObjectTypeDefinition> = {
       ...DIMENSION_FIELDS,
       ADDRESS_FIELD,
       { key: 'levels', label: 'Níveis', kind: 'select', options: LEVEL_OPTIONS },
+      LOAD_FIELD,
+
     ],
     defaultProperties: { levels: 3 },
   },
@@ -597,6 +619,8 @@ export const OBJECT_CATALOG: Record<ObjectTypeKey, ObjectTypeDefinition> = {
       ...DIMENSION_FIELDS,
       ADDRESS_FIELD,
       { key: 'levels', label: 'Níveis', kind: 'select', options: LEVEL_OPTIONS },
+      LOAD_FIELD,
+
     ],
     defaultProperties: { levels: 3 },
   },
