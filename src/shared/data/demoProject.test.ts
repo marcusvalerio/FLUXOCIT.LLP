@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEMO_PROJECT, buildDemoFlow, buildDemoObjects } from './demoProject'
 import { analyzeProject } from '../lib/intelligence'
+import { computeSafetyChecks } from '../lib/safety'
 import { OBJECT_CATALOG } from '../../features/editor/objects/catalog'
 
 const objects = buildDemoObjects()
@@ -24,6 +25,11 @@ describe('projeto demonstrativo', () => {
     for (const o of objects.filter((o) => o.objectType === 'pedestrian-lane')) {
       expect(Math.min(o.width, o.length), o.id).toBeGreaterThanOrEqual(120)
     }
+  })
+
+  it('passa em todas as verificações do selo SEGURANÇA', () => {
+    const checks = computeSafetyChecks(objects, DEMO_PROJECT.widthM, DEMO_PROJECT.heightM)
+    expect(checks.filter((c) => c.status !== 'ok').map((c) => `${c.id}: ${c.detail}`)).toEqual([])
   })
 
   it('o Fluxo só liga etapas vinculadas a objetos existentes', () => {
